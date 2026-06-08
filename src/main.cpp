@@ -23,7 +23,7 @@
 #include <time.h>                   // NTP clock + night auto-dim
 #include <WebServer.h>              // configuration web page
 #include <ESPmDNS.h>                // http://capsuleradar.local
-// #include <ArduinoOTA.h>
+#include <ArduinoOTA.h>             // OTA firmware update over WiFi
 
 // ---- shared state ----
 static std::vector<Aircraft> g_aircraft;      // latest snapshot
@@ -53,8 +53,8 @@ static void adsb_task(void*) {
         if (conn && !wasConnected) {
             Serial.printf("[adsb] WiFi up, IP %s\n", WiFi.localIP().toString().c_str());
             configTzTime(TZ_STR, "pool.ntp.org", "time.nist.gov");  // local time (Spain)
-            if (MDNS.begin("capsuleradar")) MDNS.addService("http", "tcp", 80);
             Serial.println("[web] config: http://capsuleradar.local/  (or the IP above)");
+            // mDNS + OTA are started on core 1 (loop) to keep all mDNS use on one core
         }
         wasConnected = conn;
         if (g_requery) {                          // display range changed (double-tap zoom)
@@ -232,7 +232,7 @@ static void handleRoot() {
         iopts += o;
     }
     { char o[64]; snprintf(o, sizeof(o), "<option value=0%s>Never</option>", curIdle == 0 ? " selected" : ""); iopts += o; }
-    char buf[6000];
+    static char buf[6000];   // static (not on the 8 KB loop-task stack) to avoid overflow
     snprintf(buf, sizeof(buf),
         "<!DOCTYPE html><html><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -442,7 +442,7 @@ void setup() {
         Serial.println("[wifi] config portal open - join 'CapsuleRadar-Setup' to set WiFi; UI stays live");
 
     // --- OTA ---------------------------------------------------------------
-    // TODO: ArduinoOTA.setHostname("plane-radar"); ArduinoOTA.begin();
+    // ArduinoOTA is started from loop() once WiFi connects (see otaUp there).
 
     // --- ADS-B client + task ----------------------------------------------
     float queryKm = g_settings.rangeKm * 1.6f;          // query wider than the display range
@@ -468,7 +468,17 @@ void loop() {
     display::loop();                // drive LVGL (render dirty areas + run timers)
     g_wm.process();                 // service the WiFi config portal (non-blocking)
     g_web.handleClient();           // serve the configuration web page
-    // ArduinoOTA.handle();         // TODO
+
+    // OTA: set up once WiFi is up, then service it every loop (flash over the air)
+    static bool otaUp = false;
+    if (!otaUp && WiFi.status() == WL_CONNECTED) {
+        ArduinoOTA.setHostname("capsuleradar");        // -> capsuleradar.local (registers mDNS)
+        ArduinoOTA.begin();
+        MDNS.addService("http", "tcp", 80);            // advertise the config web page
+        otaUp = true;
+        Serial.println("[ota] ready: pio run -e esp32-s3-amoled-175-ota -t upload");
+    }
+    if (otaUp) ArduinoOTA.handle();
 
     // Push a fresh ADS-B snapshot to the radar (copy under the mutex, render outside).
     if (g_acDirty) {
