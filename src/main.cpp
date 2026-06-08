@@ -232,11 +232,14 @@ static void handleRoot() {
         iopts += o;
     }
     { char o[64]; snprintf(o, sizeof(o), "<option value=0%s>Never</option>", curIdle == 0 ? " selected" : ""); iopts += o; }
-    char buf[4500];
+    char buf[6000];
     snprintf(buf, sizeof(buf),
         "<!DOCTYPE html><html><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
-        "<title>Capsule Radar</title><style>"
+        "<title>Capsule Radar</title>"
+        "<link rel=stylesheet href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'>"
+        "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>"
+        "<style>"
         "*{box-sizing:border-box}"
         "body{background:radial-gradient(circle at 50%% -10%%,#0a1f15,#04100a 70%%);color:#cdd6d1;"
         "font-family:system-ui,-apple-system,sans-serif;margin:0 auto;padding:20px;max-width:480px;min-height:100vh}"
@@ -258,11 +261,14 @@ static void handleRoot() {
         ".ft{color:#5f7a6c;font-size:12px;text-align:center;margin-top:6px}.ft code{color:#9affc8}"
         ".ck{width:auto;display:inline;margin-right:8px;vertical-align:middle}"
         ".sec{background:#0c1a12!important;color:#1dff86!important;border:1px solid #2a4a39!important}"
+        "#map{height:220px;border-radius:10px;margin:6px 0 8px;border:1px solid #2a4a39;z-index:0}"
         "</style></head><body>"
         "<div class=hd><div class=dot></div><div><h1>Capsule Radar</h1><p class=sub>Live ADS-B radar &middot; configuration</p></div></div>"
         "<div class=card><div class=t>Location &amp; range</div><form method=POST action=/save>"
-        "<label>Center latitude</label><input name=lat value='%.5f'>"
-        "<label>Center longitude</label><input name=lon value='%.5f'>"
+        "<label>Center point &mdash; tap the map or drag the pin</label>"
+        "<div id=map></div>"
+        "<label>Center latitude</label><input id=lat name=lat value='%.5f'>"
+        "<label>Center longitude</label><input id=lon name=lon value='%.5f'>"
         "<label>Display range (km)</label><select name=range>%s</select>"
         "<label>Theme</label><select name=theme>%s</select>"
         "<button>Save &amp; restart</button></form></div>"
@@ -279,13 +285,22 @@ static void handleRoot() {
         "<p style='color:#9affc8;font-size:13px;margin:0 0 4px'>Forget the saved WiFi and reopen the setup portal.</p>"
         "<form method=POST action=/wifi><button class=w>Reset WiFi</button></form></div>"
         "<p class=ft>Reach me at <code>capsuleradar.local</code></p>"
-        "<script>function b(v,s){fetch('/bright?v='+v+(s?'&save=1':''))}"
+        "<script>"
+        "var C=[%.5f,%.5f];var MAP=L.map('map').setView(C,10);"
+        "L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'(c) OpenStreetMap'}).addTo(MAP);"
+        "var MK=L.marker(C,{draggable:true}).addTo(MAP);"
+        "function S(p){document.getElementById('lat').value=p.lat.toFixed(5);document.getElementById('lon').value=p.lng.toFixed(5);}"
+        "MK.on('dragend',function(){S(MK.getLatLng());});"
+        "MAP.on('click',function(e){MK.setLatLng(e.latlng);S(e.latlng);});"
+        "setTimeout(function(){MAP.invalidateSize();},300);"
+        "function b(v,s){fetch('/bright?v='+v+(s?'&save=1':''))}"
         "function v(x,s){fetch('/vol?v='+x+(s?'&save=1':''))}"
         "function m(c){fetch('/vol?mute='+(c?1:0)+'&save=1')}"
         "function t(){fetch('/vol?test=1')}"
         "function d(v){fetch('/idle?v='+v+'&save=1')}</script></body></html>",
         g_settings.homeLat, g_settings.homeLon, ropts.c_str(), topts.c_str(),
-        g_brightnessDay, iopts.c_str(), g_volume, g_muted ? "checked" : "");
+        g_brightnessDay, iopts.c_str(), g_volume, g_muted ? "checked" : "",
+        g_settings.homeLat, g_settings.homeLon);
     g_web.send(200, "text/html", buf);
 }
 
