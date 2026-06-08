@@ -36,15 +36,68 @@ static uint8_t es_read(uint8_t reg) {
     return Wire.read();
 }
 
-// Standard ES8311 DAC-playback init (I2S slave, MCLK present).
+static void es_update(uint8_t reg, uint8_t andmask, uint8_t ormask) {
+    es_write(reg, (uint8_t)((es_read(reg) & andmask) | ormask));
+}
+
+// ES8311 init replicated faithfully from the vendor esp_codec_dev driver for this
+// exact board: DAC playback, I2S slave, external MCLK = 256*fs, fs = 16 kHz, 16-bit,
+// internal reference (ADCL+DACR). Mirrors es8311_open + config_sample + config_fmt +
+// set_bits + start + volume/unmute.
 static void es8311_init() {
-    static const uint8_t seq[][2] = {
-        {0x00,0x1F},{0x01,0x30},{0x02,0x10},{0x03,0x10},{0x16,0x24},{0x04,0x10},
-        {0x05,0x00},{0x0B,0x00},{0x0C,0x00},{0x10,0x1F},{0x11,0x7C},{0x00,0x80},
-        {0x0D,0x01},{0x0E,0x02},{0x12,0x00},{0x13,0x10},{0x32,0xBF},{0x37,0x48},
-        {0x44,0x08},{0x00,0x80},
-    };
-    for (auto &r : seq) { es_write(r[0], r[1]); delay(1); }
+    // --- open() ---
+    es_write(0x0D, 0xFA);                 // power up system
+    es_write(0x44, 0x08);                 // (written twice: ES8311 first-write quirk)
+    es_write(0x44, 0x08);
+    es_write(0x01, 0x30);
+    es_write(0x02, 0x00);
+    es_write(0x03, 0x10);
+    es_write(0x16, 0x24);
+    es_write(0x04, 0x10);
+    es_write(0x05, 0x00);
+    es_write(0x0B, 0x00);
+    es_write(0x0C, 0x00);
+    es_write(0x10, 0x1F);
+    es_write(0x11, 0x7F);
+    es_write(0x00, 0x80);                 // reset csm/clock, slave mode
+    es_write(0x00, 0x80);                 // slave: bit6=0
+    es_write(0x01, 0x3F);                 // clk src = external MCLK, enable codec clocks
+    es_update(0x06, (uint8_t)~0x20, 0x00); // SCLK not inverted
+    es_write(0x13, 0x10);
+    es_write(0x1B, 0x0A);
+    es_write(0x1C, 0x6A);
+    es_write(0x44, 0x58);                 // internal reference (ADCL + DACR) -> drives DAC
+
+    // --- config_sample(): MCLK 4.096 MHz / 16 kHz coeff {pre=1,mult=1,adc=1,dac=1,osr 0x10/0x20,lrck 0xFF,bclk 4} ---
+    es_write(0x02, 0x00);                 // pre_div=1, pre_multi=1
+    es_write(0x05, 0x00);                 // adc_div=1, dac_div=1
+    es_write(0x03, 0x10);                 // fs_mode=0, adc_osr=0x10
+    es_write(0x04, 0x20);                 // dac_osr=0x20
+    es_update(0x07, 0xC0, 0x00);          // lrck_h=0
+    es_write(0x08, 0xFF);                 // lrck_l=0xFF
+    es_update(0x06, 0xE0, 0x03);          // bclk_div=4 (preserves SCLK-invert bit)
+
+    // --- config_fmt(NORMAL) + set_bits(16) -> SDP in/out = standard I2S, 16-bit ---
+    es_write(0x09, 0x0C);
+    es_write(0x0A, 0x0C);
+
+    // --- start() (DAC, slave) ---
+    es_write(0x00, 0x80);
+    es_write(0x01, 0x3F);
+    es_write(0x09, 0x0C);                 // DAC iface enabled (bit6=0)
+    es_write(0x0A, 0x0C);
+    es_write(0x17, 0xBF);
+    es_write(0x0E, 0x02);
+    es_write(0x12, 0x00);                 // enable DAC
+    es_write(0x14, 0x1A);
+    es_write(0x0D, 0x01);
+    es_write(0x15, 0x40);
+    es_write(0x37, 0x08);
+    es_write(0x45, 0x00);
+
+    // --- volume + unmute ---
+    es_write(0x32, 0xBF);                 // DAC volume ~0 dB
+    es_update(0x31, 0x9F, 0x00);          // unmute DAC
 }
 
 static bool i2s_setup() {
