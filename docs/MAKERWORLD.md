@@ -87,25 +87,34 @@ speaker, a small kickstand foot, and an engraved logo. Snap-/screw-together, no 
 
 | Setting | Value |
 |---|---|
-| Printer | ‹TODO› |
+| Printer | Bambu Lab ‹model› (sliced in Bambu Studio) |
+| Plate | **Textured PEI** (gives the matte exterior finish) |
 | Material | ‹TODO: PLA / PETG› |
 | Nozzle | ‹0.4 mm› |
 | Layer height | ‹0.2 mm› |
 | Walls / Infill | ‹3 walls / 15 %› |
-| Supports | ‹TODO› |
-| Parts | Front bezel + tactile ring, back shell, top crown/button, kickstand foot ‹confirm/adjust› |
+| Supports | ‹TODO — likely needed for the rounded outer ring overhang› |
 | Print time | ‹TODO› · Filament: ‹TODO g› |
 
-> Tip: print the bezel/ring in white and the inner trim in a contrasting dark filament
-> (as shown) for the two-tone look; the logo can be engraved or printed as a colour swap.
+**Parts (5):**
+1. **Outer tactile ring** — the rounded, knurled bezel band.
+2. **Front mount ring / inner bezel** — holds the board; round screen window + screw bosses.
+3. **Back plate / lid** — engraved "Capsule Radar" logo on the outside.
+4. **Top crown** — decorative (the "antenna" nub), press-fit.
+5. **Kickstand foot** — the angled wedge that tilts the unit upright.
+
+> Tip: print the rings in white and the inner trim ring in a contrasting dark filament
+> (as shown) for the two-tone look; the back-plate logo is engraved (or a colour swap).
 
 ## Assembly
-1. ‹Press any heat-set inserts into the back shell.›
-2. Seat the Waveshare board behind the round front window (the AMOLED aligns with the
-   bezel opening); route the **USB-C port** to the side cut-out.
-3. Plug the **speaker** into the board's speaker connector (and the LiPo, if used).
-4. Fit the **top crown/button**, then close the back shell and fasten ‹with the screws›.
-5. Flash the firmware (next section) and run the WiFi setup.
+1. ‹Press any heat-set inserts into the bosses, if used.›
+2. Seat the Waveshare board in the **front mount ring**, AMOLED aligned with the window;
+   route the **USB-C port** to the side cut-out.
+3. Plug the **speaker** into the board's connector (and the LiPo, if used).
+4. Slip the **outer tactile ring** over the front, then close with the **back plate**
+   (logo facing out) and fasten ‹with the screws into the bosses›.
+5. Press-fit the **top crown**; attach the **kickstand foot** at the back.
+6. Flash the firmware (next section) and run the WiFi setup.
 
 ---
 
