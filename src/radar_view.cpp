@@ -60,6 +60,8 @@
 
 static int        s_theme    = THEME_PHOSPHOR;
 static void      (*s_themeCb)(int) = nullptr;
+// scope "chrome" palette (rings/sweep/crosshair/labels) — retinted per theme
+static lv_color_t s_cRing = COL_GREEN, s_cLead = COL_LEAD, s_cInk = COL_INK, s_cSoft = COL_SOFT;
 static lv_obj_t  *s_parent   = nullptr;
 static lv_obj_t  *s_gridLayer = nullptr;
 static lv_obj_t  *s_sweep     = nullptr;
@@ -148,7 +150,7 @@ static void flow_draw_seg(const FlowSeg &s) {
     if (!s_flowCanvas) return;
     lv_draw_line_dsc_t d;
     lv_draw_line_dsc_init(&d);
-    d.color = dragon() ? DRG_FLOW : lv_color_hex(0x1FB57E);
+    d.color = dragon() ? DRG_FLOW : s_cRing;
     d.width = 2;
     d.opa = FLOW_OPA;
     lv_point_t pts[2] = { s.a, s.b };
@@ -199,7 +201,7 @@ static void grid_draw_cb(lv_event_t *e) {
     // phosphor: concentric rings + crosshair
     lv_draw_arc_dsc_t ad;
     lv_draw_arc_dsc_init(&ad);
-    ad.color = COL_GREEN;
+    ad.color = s_cRing;
     ad.width = 2;
     const lv_coord_t rr[4] = { 50, 104, 160, RADAR_R_OUTER_PX };
     const lv_opa_t   ro[4] = { 66, 66, 66, 87 };
@@ -207,7 +209,7 @@ static void grid_draw_cb(lv_event_t *e) {
 
     lv_draw_line_dsc_t ll;
     lv_draw_line_dsc_init(&ll);
-    ll.color = COL_GREEN;
+    ll.color = s_cRing;
     ll.width = 2;
     ll.opa = 41;
     lv_point_t h1 = { (lv_coord_t)(s_cx - 211), s_cy }, h2 = { (lv_coord_t)(s_cx + 211), s_cy };
@@ -225,7 +227,7 @@ static void sweep_draw_cb(lv_event_t *e) {
 
     lv_draw_line_dsc_t ld;
     lv_draw_line_dsc_init(&ld);
-    ld.color = COL_GREEN;
+    ld.color = s_cRing;
     ld.width = 5;
     ld.round_start = 1;
     ld.round_end = 1;
@@ -239,7 +241,7 @@ static void sweep_draw_cb(lv_event_t *e) {
     }
     lv_draw_line_dsc_t le;
     lv_draw_line_dsc_init(&le);
-    le.color = COL_LEAD;
+    le.color = s_cLead;
     le.width = 2;
     le.opa = 217;
     le.round_start = 1;
@@ -457,7 +459,7 @@ static void ac_draw_cb(lv_event_t *e) {
                 lv_draw_arc(d, &sr, &ac.pos, 15, 0, 360);
                 lv_draw_arc(d, &sr, &ac.pos, 23, 0, 360);
             } else {
-                sr.color = ac.emergency ? COL_EMERG : COL_INK;
+                sr.color = ac.emergency ? COL_EMERG : s_cInk;
                 lv_draw_arc(d, &sr, &ac.pos, 19, 0, 360);
             }
         }
@@ -467,7 +469,7 @@ static void ac_draw_cb(lv_event_t *e) {
             lv_draw_label_dsc_t lc;
             lv_draw_label_dsc_init(&lc);
             lc.font = &lv_font_montserrat_14;
-            lc.color = COL_INK;
+            lc.color = s_cInk;
             lv_area_t a1 = { (lv_coord_t)(ac.pos.x + 12), (lv_coord_t)(ac.pos.y - 14),
                              (lv_coord_t)(ac.pos.x + 142), (lv_coord_t)(ac.pos.y + 2) };
             if (ac.call[0]) lv_draw_label(d, &lc, &a1, ac.call, NULL);
@@ -516,6 +518,17 @@ void setTheme(int t) {
     s_theme = ((t % THEME_COUNT) + THEME_COUNT) % THEME_COUNT;
     const bool drg = dragon();
 
+    switch (s_theme) {                          // pick the scope chrome palette
+        case THEME_AMBER:
+            s_cRing = lv_color_hex(0xFFB23C); s_cLead = lv_color_hex(0xFFD27A);
+            s_cInk  = lv_color_hex(0xFFE9C2); s_cSoft = lv_color_hex(0xFFC98A); break;
+        case THEME_MILITARY:
+            s_cRing = lv_color_hex(0x49C46B); s_cLead = lv_color_hex(0x76E08C);
+            s_cInk  = lv_color_hex(0xE0FFE6); s_cSoft = lv_color_hex(0x9FD7A8); break;
+        default:                                // phosphor (dragon uses its own colors)
+            s_cRing = COL_GREEN; s_cLead = COL_LEAD; s_cInk = COL_INK; s_cSoft = COL_SOFT; break;
+    }
+
     if (s_parent) {
         if (drg) {
             lv_obj_set_style_bg_color(s_parent, DRG_BG_TOP, 0);
@@ -531,6 +544,13 @@ void setTheme(int t) {
     show(s_rangeLbl, !drg);
     show(s_centerDot, !drg);                             // dragon draws an orange triangle instead
     show(s_pulse, !drg);
+
+    // retint the persistent chrome objects for the active palette
+    if (s_rose[0]) lv_obj_set_style_text_color(s_rose[0], s_cInk, 0);
+    for (int i = 1; i < 4; ++i) if (s_rose[i]) lv_obj_set_style_text_color(s_rose[i], s_cSoft, 0);
+    if (s_centerDot) lv_obj_set_style_bg_color(s_centerDot, s_cInk, 0);
+    if (s_pulse)     lv_obj_set_style_border_color(s_pulse, s_cInk, 0);
+    if (s_rangeLbl)  lv_obj_set_style_text_color(s_rangeLbl, s_cRing, 0);
 
     flow_redraw_all();
     if (s_parent) lv_obj_invalidate(s_parent);

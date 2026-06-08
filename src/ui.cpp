@@ -76,6 +76,11 @@ static void refresh_card(void) {
 
 // --------------------------------------------------------------------- input
 static bool s_longPressed = false;
+static uint32_t s_lastTapMs = 0;
+static int s_rangeIdx = -1;
+static void (*s_rangeCb)(float) = nullptr;
+
+void ui_set_range_cb(void (*cb)(float)) { s_rangeCb = cb; }
 
 static void radar_press_cb(lv_event_t *e) { (void)e; s_longPressed = false; }
 
@@ -88,6 +93,19 @@ static void radar_longpress_cb(lv_event_t *e) {   // long-press cycles the visua
 static void radar_clicked_cb(lv_event_t *e) {
     (void)e;
     if (s_longPressed) { s_longPressed = false; return; }   // ignore the click after a long-press
+
+    const uint32_t now = lv_tick_get();
+    if (now - s_lastTapMs < 350) {                          // double-tap -> cycle zoom range
+        s_lastTapMs = 0;
+        if (s_rangeCb) {
+            const int n = (int)(sizeof(RANGE_STEPS_KM) / sizeof(RANGE_STEPS_KM[0]));
+            s_rangeIdx = (s_rangeIdx + 1) % n;
+            s_rangeCb(RANGE_STEPS_KM[s_rangeIdx]);
+        }
+        return;
+    }
+    s_lastTapMs = now;
+
     lv_indev_t *indev = lv_indev_get_act();
     if (!indev) return;
     lv_point_t p;
@@ -105,8 +123,11 @@ static void list_btn_cb(lv_event_t *e) {
 }
 
 // ----------------------------------------------------------------- list/stats
-void ui_set_status(bool wifiUp, const char *clock) {
-    if (s_hudWifi) lv_obj_set_style_text_color(s_hudWifi, wifiUp ? UI_INK : UI_EMERG, 0);
+void ui_set_status(bool wifiUp, bool feedOk, const char *clock) {
+    if (s_hudWifi) {
+        const lv_color_t c = !wifiUp ? UI_EMERG : (feedOk ? UI_INK : lv_color_hex(0xFFB23C));
+        lv_obj_set_style_text_color(s_hudWifi, c, 0);   // red = no wifi, amber = feed failing
+    }
     if (s_hudClock && clock) lv_label_set_text(s_hudClock, clock);
 }
 
@@ -248,6 +269,70 @@ void ui_show_view(int idx) {
     if (s_tv && idx >= 0 && idx <= 2) lv_obj_set_tile_id(s_tv, (uint32_t)idx, 0, LV_ANIM_OFF);
 }
 
+// ------------------------------------------------------------------- splash
+static void splash_fade_cb(void *obj, int32_t v) { lv_obj_set_style_opa((lv_obj_t *)obj, (lv_opa_t)v, 0); }
+static void splash_del_cb(lv_anim_t *a) { lv_obj_del((lv_obj_t *)a->var); }
+
+static void splash_dismiss_cb(lv_timer_t *t) {
+    lv_obj_t *cont = (lv_obj_t *)t->user_data;
+    lv_timer_del(t);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, cont);
+    lv_anim_set_exec_cb(&a, splash_fade_cb);
+    lv_anim_set_values(&a, 255, 0);
+    lv_anim_set_time(&a, 600);
+    lv_anim_set_ready_cb(&a, splash_del_cb);
+    lv_anim_start(&a);
+}
+
+void ui_splash_show(void) {
+    lv_obj_t *cont = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(cont);
+    lv_obj_set_size(cont, SCREEN_W, SCREEN_H);
+    lv_obj_center(cont);
+    lv_obj_set_style_bg_color(cont, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(cont, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(cont, LV_OBJ_FLAG_SCROLLABLE);
+
+    // concentric rings
+    const lv_coord_t dia[3] = { 210, 142, 78 };
+    const lv_opa_t   op[3]  = { 90, 120, 160 };
+    for (int i = 0; i < 3; ++i) {
+        lv_obj_t *r = lv_obj_create(cont);
+        lv_obj_remove_style_all(r);
+        lv_obj_set_size(r, dia[i], dia[i]);
+        lv_obj_align(r, LV_ALIGN_CENTER, 0, -8);
+        lv_obj_set_style_radius(r, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_border_color(r, UI_GREEN, 0);
+        lv_obj_set_style_border_opa(r, op[i], 0);
+        lv_obj_set_style_border_width(r, 2, 0);
+        lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+    }
+    // rotating sweep
+    lv_obj_t *sweep = lv_spinner_create(cont, 1400, 55);
+    lv_obj_set_size(sweep, 210, 210);
+    lv_obj_align(sweep, LV_ALIGN_CENTER, 0, -8);
+    lv_obj_set_style_arc_opa(sweep, 0, LV_PART_MAIN);
+    lv_obj_set_style_arc_color(sweep, UI_GREEN, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(sweep, 4, LV_PART_INDICATOR);
+
+    lv_obj_t *title = lv_label_create(cont);
+    lv_label_set_text(title, "CAPSULE RADAR");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_color(title, UI_GREEN, 0);
+    lv_obj_align(title, LV_ALIGN_CENTER, 0, 118);
+
+    lv_obj_t *sub = lv_label_create(cont);
+    lv_label_set_text(sub, "Live ADS-B radar");
+    lv_obj_set_style_text_font(sub, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(sub, UI_SOFT, 0);
+    lv_obj_align(sub, LV_ALIGN_CENTER, 0, 150);
+
+    lv_timer_t *t = lv_timer_create(splash_dismiss_cb, 2200, cont);   // hold, then fade out
+    lv_timer_set_repeat_count(t, 1);
+}
+
 void ui_create(void) {
     lv_obj_t *scr = lv_scr_act();
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
@@ -333,4 +418,6 @@ void ui_create(void) {
     lv_obj_align(s_statsNet, LV_ALIGN_CENTER, 0, 132);
 
     lv_obj_set_tile_id(s_tv, 0, 0, LV_ANIM_OFF);
+
+    ui_splash_show();   // branded boot splash on top (auto-fades)
 }

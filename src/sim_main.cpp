@@ -78,6 +78,8 @@ static Aircraft mk(const char *call, const char *hex, double distKm, double brgD
     return a;
 }
 
+static void sim_range_cb(float km) { g_set.rangeKm = km; radar::update(g_mockAcs, g_set); }
+
 static void mock_init() {
     g_set.homeLat = HOME_LAT_DEFAULT;
     g_set.homeLon = HOME_LON_DEFAULT;
@@ -159,6 +161,7 @@ int main(int argc, char **argv) {
     lv_indev_drv_register(&indev_drv);
 
     ui_create();
+    ui_set_range_cb(sim_range_cb);   // double-click the radar to zoom
     mock_init();
     radar::update(g_mockAcs, g_set);
     ui_on_data_updated();
@@ -184,7 +187,7 @@ int main(int argc, char **argv) {
             ui_on_data_updated();
             char clk[8];
             snprintf(clk, sizeof(clk), "14:%02d", (int)((now / 1000) % 60));  // mock clock
-            ui_set_status(true, clk);
+            ui_set_status(true, true, clk);
             ui_set_battery(78, false, true);   // mock battery
             ui_set_date("08 Jun 2026");        // mock date
             ui_set_netinfo("Configure at\ncapsuleradar.local\n192.168.1.42");  // mock net info
@@ -200,6 +203,22 @@ int main(int argc, char **argv) {
         }
         lv_timer_handler();
 
+        // headless screenshot mode: grab the boot splash early (before it fades)
+        static bool splashSaved = false;
+        if (shotPath && !splashSaved && now - start > 900) {
+            splashSaved = true;
+            lv_refr_now(NULL);
+            SDL_RenderClear(s_ren); SDL_RenderCopy(s_ren, s_tex, NULL, NULL);
+            int ow, oh; SDL_GetRendererOutputSize(s_ren, &ow, &oh);
+            SDL_Surface *surf = SDL_CreateRGBSurfaceWithFormat(0, ow, oh, 32, SDL_PIXELFORMAT_ARGB8888);
+            if (surf) {
+                SDL_RenderReadPixels(s_ren, NULL, SDL_PIXELFORMAT_ARGB8888, surf->pixels, surf->pitch);
+                char path[300]; snprintf(path, sizeof(path), "%s-splash.bmp", shotPath);
+                SDL_SaveBMP(surf, path); SDL_FreeSurface(surf);
+                printf("[sim] saved %s\n", path);
+            }
+        }
+
         // headless screenshot mode (--shot <prefix>): settle, then grab all 3 views
         if (shotPath && now - start > 4000) {
             for (int k = 0; k < 150; ++k) {              // fast-forward to build up the flow map
@@ -213,13 +232,15 @@ int main(int argc, char **argv) {
             int ow, oh;
             SDL_GetRendererOutputSize(s_ren, &ow, &oh);
             struct Shot { const char *name; int view; int theme; };
-            const Shot shots[4] = {
+            const Shot shots[6] = {
                 { "radar",  0, THEME_PHOSPHOR },
                 { "dragon", 0, THEME_DRAGON   },
+                { "amber",  0, THEME_AMBER    },
+                { "military",0, THEME_MILITARY },
                 { "list",   1, THEME_PHOSPHOR },
                 { "stats",  2, THEME_PHOSPHOR },
             };
-            for (int v = 0; v < 4; ++v) {
+            for (int v = 0; v < 6; ++v) {
                 radar::setTheme(shots[v].theme);
                 ui_show_view(shots[v].view);
                 lv_refr_now(NULL);                       // force the view into the buffer

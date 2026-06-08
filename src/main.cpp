@@ -32,6 +32,10 @@ static WiFiManager           g_wm;
 static int                   g_brightnessDay = BRIGHTNESS_DEFAULT;   // user brightness (web/NVS)
 static volatile bool         g_onBattery = false;                    // discharging (set on core 1, read on core 0)
 static bool                  g_rtcSynced = false;                    // RTC written from NTP this session?
+static std::vector<Aircraft> g_snap;                                 // last snapshot (instant re-render on zoom)
+static volatile bool         g_requery = false;                      // range changed -> adsb_task re-begins
+static float                 g_requeryKm = 0.0f;
+static volatile bool         g_feedOk = true;                        // ADS-B feed healthy? (HUD warning)
 
 // ---- networking task (core 0): fetch + parse, never touches the display ----
 static void adsb_task(void*) {
@@ -47,13 +51,21 @@ static void adsb_task(void*) {
             Serial.println("[web] config: http://capsuleradar.local/  (or the IP above)");
         }
         wasConnected = conn;
+        if (g_requery) {                          // display range changed (double-tap zoom)
+            g_adsb.begin(g_settings.homeLat, g_settings.homeLon, g_requeryKm);
+            g_requery = false;
+            lastPoll = 0;                         // poll immediately at the new radius
+        }
         if (conn) {
             const uint32_t nowMs = millis();
             const uint32_t pollInterval = g_onBattery ? POLL_INTERVAL_BATTERY_MS : POLL_INTERVAL_MS;
             if (lastPoll == 0 || nowMs - lastPoll >= pollInterval) {  // aircraft feed
                 lastPoll = nowMs;
+                static int failCount = 0;
                 if (g_adsb.poll(fresh)) {
                     Serial.printf("[adsb] fetched %u aircraft\n", (unsigned)fresh.size());
+                    failCount = 0;
+                    g_feedOk = true;
                     if (xSemaphoreTake(g_ac_mutex, pdMS_TO_TICKS(200)) == pdTRUE) {
                         g_aircraft = fresh;
                         g_acDirty = true;
@@ -61,6 +73,7 @@ static void adsb_task(void*) {
                     }
                 } else {
                     Serial.println("[adsb] poll failed (fetch or parse)");
+                    if (++failCount >= 3) g_feedOk = false;   // several misses -> HUD warning
                 }
             }
             // on-demand route lookup for the selected aircraft (checked often, fetched once)
@@ -84,6 +97,20 @@ static void loadSettings() {
     g_settings.rangeKm = p.getFloat("rangeKm", RANGE_KM_DEFAULT);
     g_brightnessDay    = p.getInt("bright", BRIGHTNESS_DEFAULT);
     p.end();
+}
+
+// Double-tap zoom: change the display range, persist it, and ask adsb_task to
+// re-query at a matching radius (safely, on its own core). Re-render immediately.
+static void onRangeChange(float km) {
+    g_settings.rangeKm = km;
+    Preferences p;
+    p.begin("capsuleradar", false);
+    p.putFloat("rangeKm", km);
+    p.end();
+    g_requeryKm = constrain(km * 1.6f, 50.0f, 200.0f);
+    g_requery = true;
+    radar::update(g_snap, g_settings);   // instant visual zoom from the last snapshot
+    ui_on_data_updated();
 }
 
 // Persist the visual theme in NVS (called when the user long-presses to switch).
@@ -137,6 +164,13 @@ static void handleRoot() {
                  r, (r == (int)(g_settings.rangeKm + 0.5f)) ? " selected" : "", r);
         ropts += o;
     }
+    const char *tnames[] = {"Phosphor", "Dragon (Capsule Corp)", "Amber CRT", "Military"};
+    String topts;
+    for (int i = 0; i < 4; ++i) {
+        char o[80];
+        snprintf(o, sizeof(o), "<option value=%d%s>%s</option>", i, i == th ? " selected" : "", tnames[i]);
+        topts += o;
+    }
     char buf[3400];
     snprintf(buf, sizeof(buf),
         "<!DOCTYPE html><html><head><meta charset=utf-8>"
@@ -167,8 +201,7 @@ static void handleRoot() {
         "<label>Center latitude</label><input name=lat value='%.5f'>"
         "<label>Center longitude</label><input name=lon value='%.5f'>"
         "<label>Display range (km)</label><select name=range>%s</select>"
-        "<label>Theme</label><select name=theme>"
-        "<option value=0 %s>Phosphor</option><option value=1 %s>Dragon (Capsule Corp)</option></select>"
+        "<label>Theme</label><select name=theme>%s</select>"
         "<button>Save &amp; restart</button></form></div>"
         "<div class=card><div class=t>Brightness</div>"
         "<input type=range min=5 max=255 value='%d' oninput='b(this.value,0)' onchange='b(this.value,1)'></div>"
@@ -177,8 +210,7 @@ static void handleRoot() {
         "<form method=POST action=/wifi><button class=w>Reset WiFi</button></form></div>"
         "<p class=ft>Reach me at <code>capsuleradar.local</code></p>"
         "<script>function b(v,s){fetch('/bright?v='+v+(s?'&save=1':''))}</script></body></html>",
-        g_settings.homeLat, g_settings.homeLon, ropts.c_str(),
-        th == 0 ? "selected" : "", th == 1 ? "selected" : "", g_brightnessDay);
+        g_settings.homeLat, g_settings.homeLon, ropts.c_str(), topts.c_str(), g_brightnessDay);
     g_web.send(200, "text/html", buf);
 }
 
@@ -249,6 +281,7 @@ void setup() {
         radar::setTheme(t);
     }
     radar::setThemeChangedCb(saveTheme);
+    ui_set_range_cb(onRangeChange);   // double-tap the radar to zoom
 
     imu_begin();       // face-down sleep (no-op if the IMU isn't detected)
     battery_begin();   // AXP2101 (no-op if not detected / no battery)
@@ -310,12 +343,11 @@ void loop() {
 
     // Push a fresh ADS-B snapshot to the radar (copy under the mutex, render outside).
     if (g_acDirty) {
-        static std::vector<Aircraft> snap;
         if (xSemaphoreTake(g_ac_mutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-            snap = g_aircraft;
+            g_snap = g_aircraft;
             g_acDirty = false;
             xSemaphoreGive(g_ac_mutex);
-            radar::update(snap, g_settings);   // rebuild the glyph/trail layer
+            radar::update(g_snap, g_settings); // rebuild the glyph/trail layer
             ui_on_data_updated();              // refresh card/list/stats
         }
     }
@@ -333,7 +365,7 @@ void loop() {
             strftime(date, sizeof(date), "%d %b %Y", &ti);   // e.g. "08 Jun 2026"
             ui_set_date(date);
         }
-        ui_set_status(WiFi.status() == WL_CONNECTED, clk);
+        ui_set_status(WiFi.status() == WL_CONNECTED, g_feedOk, clk);
         char net[80];
         if (WiFi.status() == WL_CONNECTED)
             snprintf(net, sizeof(net), "Configure at\ncapsuleradar.local\n%s", WiFi.localIP().toString().c_str());
