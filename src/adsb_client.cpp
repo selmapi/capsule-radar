@@ -29,8 +29,15 @@ void AdsbClient::begin(double homeLat, double homeLon, float rangeKm) {
 
 bool AdsbClient::poll(std::vector<Aircraft>& out) {
     if (WiFi.status() != WL_CONNECTED) return false;
+    // Prefer the primary host, and give it a quick second try before touching the fallback:
+    // the primary is reliable in practice, while the fallback can be slow to time out from
+    // some networks (turning one transient primary blip into a long no-data gap + amber HUD).
+    if (fetchFrom(ADSB_PRIMARY_HOST, out)) return true;
+    if (fetchFrom(ADSB_PRIMARY_HOST, out)) return true;   // transient blip -> retry the healthy host
+    return fetchFrom(ADSB_FALLBACK_HOST, out);            // last resort
+}
 
-    const char* host = _useFallback ? ADSB_FALLBACK_HOST : ADSB_PRIMARY_HOST;
+bool AdsbClient::fetchFrom(const char* host, std::vector<Aircraft>& out) {
     const double nm = _rangeKm * 0.539957;            // km -> nautical miles (API radius unit)
     char url[160];
     snprintf(url, sizeof(url), "https://%s/v2/point/%.4f/%.4f/%.0f", host, _lat, _lon, nm);
@@ -46,12 +53,12 @@ bool AdsbClient::poll(std::vector<Aircraft>& out) {
     http.setReuse(false);
     http.setConnectTimeout(6000);    // fail reasonably fast: a slow host must not block the
     http.setTimeout(8000);           // task (and the user's route/photo lookups) for too long
-    if (!http.begin(client, url)) { Serial.printf("[adsb] begin failed (%s)\n", host); _useFallback = !_useFallback; return false; }
+    if (!http.begin(client, url)) { Serial.printf("[adsb] begin failed (%s)\n", host); return false; }
     http.addHeader("User-Agent", ADSB_USER_AGENT);
     http.addHeader("Accept", "application/json");
 
     const int code = http.GET();
-    if (code != 200) { Serial.printf("[adsb] HTTP %d (%s)\n", code, host); http.end(); _useFallback = !_useFallback; return false; }
+    if (code != 200) { Serial.printf("[adsb] HTTP %d (%s)\n", code, host); http.end(); return false; }
 
     // Only keep the fields we use -> much smaller parsed document.
     JsonDocument filter(&s_jsonPsram);
@@ -67,11 +74,11 @@ bool AdsbClient::poll(std::vector<Aircraft>& out) {
     DeserializationError err = deserializeJson(doc, http.getStream(),
                                                DeserializationOption::Filter(filter));
     http.end();
-    if (err) { _useFallback = !_useFallback; return false; }
+    if (err) return false;
 
     JsonArrayConst arr = doc["ac"].as<JsonArrayConst>();
     if (arr.isNull()) arr = doc["aircraft"].as<JsonArrayConst>();
-    if (arr.isNull()) { _useFallback = !_useFallback; return false; }
+    if (arr.isNull()) return false;
 
     std::vector<Aircraft> tmp;
     const uint32_t now = millis();

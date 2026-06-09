@@ -669,7 +669,7 @@ void loop() {
         // "fresh" = we got aircraft data recently. Catches a stalled feed (weak WiFi dropping
         // polls intermittently) that never trips the consecutive-fail counter -> aircraft
         // freeze but the icon would otherwise stay white.
-        const bool feedFresh = wifiUp && (millis() - g_lastFeedOkMs < 12000UL);
+        const bool feedFresh = wifiUp && (millis() - g_lastFeedOkMs < 18000UL);
         ui_set_status(wifiUp, feedFresh, rssi, clk);
         char net[80];
         if (WiFi.status() == WL_CONNECTED)

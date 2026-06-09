@@ -17,8 +17,9 @@ public:
     uint32_t lastOkMs() const { return _lastOkMs; }
 
 private:
+    bool fetchFrom(const char* host, std::vector<Aircraft>& out);   // one host, one attempt
+
     double _lat = 0, _lon = 0;
     float  _rangeKm = 15.0f;
-    bool   _useFallback = false;
     uint32_t _lastOkMs = 0;
 };

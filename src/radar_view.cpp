@@ -56,7 +56,7 @@
 
 // ---- aircraft / flow / dragon config ----
 #define TRAIL_MAX         7
-#define TAP_RADIUS_PX     26
+#define TAP_RADIUS_PX     40    // generous finger-tap catch radius (picks the nearest glyph within it)
 #define FLOW_MAX          700
 #define FLOW_REDRAW_EVERY 80
 #define FLOW_OPA          55
