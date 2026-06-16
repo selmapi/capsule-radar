@@ -242,19 +242,20 @@ static void handleRoot() {
         snprintf(o, sizeof(o), "<option value=%d%s>%s</option>", i, i == th ? " selected" : "", tnames[i]);
         topts += o;
     }
-    const int idleSecs[] = {10, 20, 30, 60, 120, 300};
+    const int idleSecs[] = {10, 20, 30, 60, 120, 300, 1800, 3600, 7200, 14400, 28800};
     const int curIdle = (int)(g_idleDimMs / 1000);
     String iopts;
     for (int sV : idleSecs) {
         char lbl[16];
-        if (sV < 60) snprintf(lbl, sizeof(lbl), "%d s", sV);
-        else         snprintf(lbl, sizeof(lbl), "%d min", sV / 60);
+        if      (sV < 60)   snprintf(lbl, sizeof(lbl), "%d s", sV);
+        else if (sV < 3600) snprintf(lbl, sizeof(lbl), "%d min", sV / 60);
+        else                snprintf(lbl, sizeof(lbl), "%d h", sV / 3600);
         char o[96];
         snprintf(o, sizeof(o), "<option value=%d%s>%s</option>", sV, sV == curIdle ? " selected" : "", lbl);
         iopts += o;
     }
     { char o[64]; snprintf(o, sizeof(o), "<option value=0%s>Never</option>", curIdle == 0 ? " selected" : ""); iopts += o; }
-    const char *unames[] = {"Aviation (ft, kt, km)", "Metric (m, km/h, km)", "Imperial (ft, mph, mi)"};
+    const char *unames[] = {"Aviation (ft, kt, nm)", "Metric (m, km/h, km)", "Imperial (ft, mph, mi)"};
     String uopts;
     for (int i = 0; i < 3; ++i) {
         char o[96];
@@ -324,7 +325,7 @@ static void handleRoot() {
         "<div class=card><div class=t>Network</div>"
         "<p style='color:#9affc8;font-size:13px;margin:0 0 4px'>Forget the saved WiFi and reopen the setup portal.</p>"
         "<form method=POST action=/wifi><button class=w>Reset WiFi</button></form></div>"
-        "<p class=ft>Reach me at <code>capsuleradar.local</code> &middot; <a href=/update style='color:#9affc8'>Firmware update</a></p>"
+        "<p class=ft>Reach me at <code>capsuleradar.local</code> &middot; <a href=/update style='color:#9affc8'>Firmware update</a> &middot; v" FW_VERSION "</p>"
         "<script>"
         "var C=[%.5f,%.5f];var MAP=L.map('map').setView(C,10);"
         "L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'(c) OpenStreetMap'}).addTo(MAP);"
@@ -732,8 +733,9 @@ void loop() {
     static int fdCount = 0;
     if (millis() - lastImu > 400) {
         lastImu = millis();
-        if (imu_facedown()) { if (fdCount < 8) fdCount++; }
-        else fdCount = 0;
+        const int fd = imu_facedown();              // 1 down, 0 not, -1 read error
+        if (fd > 0)       { if (fdCount < 8) fdCount++; }
+        else if (fd == 0) fdCount = 0;              // -1 (I2C hiccup): leave the counter as-is
         const bool sleep = (fdCount >= 4);   // ~1.6 s face-down
         const bool idle  = g_idleDimMs > 0 && display::inactiveMs() > g_idleDimMs;
         if (sleep != g_asleep || idle != g_idle) {

@@ -54,10 +54,13 @@ bool imu_begin() {
     return false;
 }
 
-bool imu_facedown() {
-    if (!s_ok) return false;
+// 1 = face-down, 0 = not, -1 = couldn't read (shared I2C bus is noisy — a failed read
+// must NOT be treated as "not face-down", or it keeps resetting the debounce counter and
+// the screen never sleeps).
+int imu_facedown() {
+    if (!s_ok) return -1;
     uint8_t b[2];
-    if (!rd(QMI_AZ_L, b, 2)) return false;
+    if (!rd(QMI_AZ_L, b, 2)) return -1;
     const int16_t az = (int16_t)((b[1] << 8) | b[0]);
-    return az > FACEDOWN_THRESHOLD;
+    return (az > FACEDOWN_THRESHOLD) ? 1 : 0;
 }

@@ -51,8 +51,12 @@ static void fmt_vs(char *b, size_t n, float fpm) {
     else if (s_units == 1) snprintf(b, n, "%+.1f m/s", fpm * 0.00508f);
     else                   snprintf(b, n, "%+.0f fpm", fpm);
 }
-static float dist_val(float km)   { return s_units == 2 ? km * 0.621371f : km; }
-static const char *dist_unit(void){ return s_units == 2 ? "mi" : "km"; }
+static float dist_val(float km) {
+    if (s_units == 0) return km * 0.539957f;   // Aviation -> nautical miles
+    if (s_units == 2) return km * 0.621371f;   // Imperial -> miles
+    return km;                                   // Metric   -> km
+}
+static const char *dist_unit(void) { return s_units == 0 ? "nm" : (s_units == 2 ? "mi" : "km"); }
 
 // Fold Latin-1 accents / drop any other non-ASCII so the Montserrat font never hits a
 // missing glyph (which renders as an empty box). Belt-and-suspenders for card text.
@@ -600,6 +604,12 @@ void ui_create(void) {
     lv_obj_set_style_text_align(s_statsNet, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(s_statsNet, "");
     lv_obj_align(s_statsNet, LV_ALIGN_CENTER, 0, 132);
+
+    lv_obj_t *ver = lv_label_create(sp);            // firmware version (so users can tell what's flashed)
+    lv_obj_set_style_text_font(ver, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(ver, UI_DIM, 0);
+    lv_label_set_text(ver, "Capsule Radar v" FW_VERSION);
+    lv_obj_align(ver, LV_ALIGN_CENTER, 0, 170);
 
     lv_obj_set_tile_id(s_tv, 0, 0, LV_ANIM_OFF);
 
