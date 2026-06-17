@@ -228,11 +228,15 @@ static WebServer g_web(80);
 static void handleRoot() {
     const int th = radar::theme();
     const int ranges[] = {10, 15, 25, 30, 50, 100, 150, 250};
+    // The value submitted stays in km (the device works in km); only the label is shown in
+    // the user's chosen distance unit so the config page matches the screen.
+    const float    ufac  = (g_units == 0) ? 0.539957f : (g_units == 2 ? 0.621371f : 1.0f);
+    const char    *uname = (g_units == 0) ? "nm" : (g_units == 2 ? "mi" : "km");
     String ropts;
     for (int r : ranges) {
         char o[72];
-        snprintf(o, sizeof(o), "<option value=%d%s>%d km</option>",
-                 r, (r == (int)(g_settings.rangeKm + 0.5f)) ? " selected" : "", r);
+        snprintf(o, sizeof(o), "<option value=%d%s>%.0f %s</option>",
+                 r, (r == (int)(g_settings.rangeKm + 0.5f)) ? " selected" : "", r * ufac, uname);
         ropts += o;
     }
     const char *tnames[] = {"Phosphor", "Dragon (Capsule Corp)", "Amber CRT", "Military"};
@@ -306,7 +310,7 @@ static void handleRoot() {
         "<div id=map></div>"
         "<label>Center latitude</label><input id=lat name=lat value='%.5f'>"
         "<label>Center longitude</label><input id=lon name=lon value='%.5f'>"
-        "<label>Display range (km)</label><select name=range>%s</select>"
+        "<label>Display range</label><select name=range>%s</select>"
         "<label>Theme</label><select name=theme>%s</select>"
         "<button>Save &amp; restart</button></form></div>"
         "<div class=card><div class=t>Display</div>"
