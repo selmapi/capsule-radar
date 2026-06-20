@@ -830,6 +830,9 @@ void loop() {
         const bool bpresent = battery_present();
         ui_set_battery(battery_percent(), battery_charging(), bpresent);
         g_onBattery = bpresent && !battery_charging();
+        // GPS HUD/Stats: 0 = off/no module (hidden), 1 = acquiring, 2 = fix
+        const int gpsState = (!g_useGps || !gps_present()) ? 0 : (gps_has_fix() ? 2 : 1);
+        ui_set_gps(gpsState, gps_satellites());
         // once NTP has a real fix, persist it to the RTC (core 1 only)
         if (!g_rtcSynced && time(nullptr) > 1700000000L) {
             time_t now = time(nullptr);

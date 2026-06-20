@@ -123,3 +123,7 @@ bool gps_location(double *lat, double *lon) {
     if (lon) *lon = s_gps.location.lng();
     return true;
 }
+
+int gps_satellites() {
+    return s_gps.satellites.isValid() ? (int)s_gps.satellites.value() : 0;
+}
