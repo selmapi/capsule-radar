@@ -94,6 +94,9 @@ static void adsb_task(void*) {
     for (;;) {
         const bool conn = (WiFi.status() == WL_CONNECTED);
         if (conn && !wasConnected) {
+            // disable WiFi modem power-save: on a mains-powered desk gadget it just adds latency
+            // and makes RSSI bounce (feed goes stale -> amber bars) even sitting next to the router.
+            WiFi.setSleep(false);
             Serial.printf("[adsb] WiFi up, IP %s\n", WiFi.localIP().toString().c_str());
             configTzTime(g_tz.c_str(), "pool.ntp.org", "time.nist.gov");  // local time (web-configurable TZ)
             Serial.println("[web] config: http://capsuleradar.local/  (or the IP above)");
