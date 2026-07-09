@@ -85,13 +85,22 @@ Keeping the theme *data* in our own files and the `radar_view.cpp` edits at a fe
 
 **CIC (ScopeStyle::kVector):** the vector-scope look — bearing-degree ring (000/090/180/270 + minor ticks), square grid, `[ ]` brackets around each target, amber targets, no rotating sweep. For the natural-color "map" layer, **reuse capsule-radar's existing baked `coastline_data.h` + airports** drawn in natural colors (water blue, coast/roads gray, airports muted), rather than building a new OSM map pipeline — capsule already ships that geometry, so CIC is lighter here than the plane-radar version was.
 
+### ClaudeIC mascot badge (easter-egg garnish)
+
+ClaudeIC (and **only** ClaudeIC) shows the little 8-bit Claude mascot — a clay pixel-creature with two eyes and two legs — as a small fixed overlay tucked inside the scope.
+
+- **Placement matters because the panel is round.** The literal display corner is clipped by the bezel; the badge sits **inside the circular safe area at ~4–5 o'clock** (default), not the pixel corner. Alternatives (bottom-center under 180°, or top-right by 000–090) are one coordinate change if Selma prefers.
+- **Implementation:** a tiny hand-encoded bitmap — an `lv_canvas` filled with a small pixel grid, or an `lv_img` from a C-array image descriptor (a new `src/mascot_img.h` / `theme_table.cpp` constant). Body in the theme's clay `#CC785C`, eyes punched to the bg `#14100E`. Created once; shown when `s_theme == THEME_CLAUDEIC`, hidden otherwise (same `show()` pattern as the compass rose). No animation, no per-frame cost.
+- Scoped tightly: it's a garnish on one theme, not a general per-theme badge system (YAGNI).
+
 ## Surfaces touched
 
 | File | Change |
 |------|--------|
 | `src/radar_view.h` | `RadarTheme` enum: add 6 values, `THEME_COUNT` → 10 |
 | `src/theme_table.{h,cpp}` | **new** — `ThemeDesc` table (the 10 rows) |
-| `src/radar_view.cpp` | descriptor-driven `setTheme()`, `ScopeStyle` branch, mono blips, layer tinting, starfield + CIC-vector draw paths (ClaudeIC reuses the vector path) |
+| `src/radar_view.cpp` | descriptor-driven `setTheme()`, `ScopeStyle` branch, mono blips, layer tinting, starfield + CIC-vector draw paths (ClaudeIC reuses the vector path), ClaudeIC-only mascot overlay |
+| `src/mascot_img.h` | **new** — hand-encoded 8-bit Claude mascot bitmap (ClaudeIC badge) |
 | `src/main.cpp` | `tnames[]` (line ~299) + inline web settings picker: add the 6 names so they appear at `capsuleradar.local` and persist |
 | `README.md` / `docs/LISTING.md` | list the new themes (optional, low priority) |
 
