@@ -6,11 +6,11 @@
 
 ## Goal
 
-Port the five distinctive themes from our plane-radar fork (`selmapi/ESP32-Plane-Radar`) into capsule-radar, growing its theme count from 4 to 9. Bring over the *look and feel* faithfully; do **not** duplicate the app — capsule-radar's features (touch, flow tracks, coastline, airports, web settings) stay as they are and the new themes simply skin them.
+Port the five distinctive themes from our plane-radar fork (`selmapi/ESP32-Plane-Radar`) into capsule-radar, plus one new original (**ClaudeIC**), growing its theme count from 4 to 10. Bring over the *look and feel* faithfully; do **not** duplicate the app — capsule-radar's features (touch, flow tracks, coastline, airports, web settings) stay as they are and the new themes simply skin them.
 
 Capsule-radar was the original inspiration for the plane-radar themes, so this is partly bringing them home. Two of its four existing themes (Phosphor green, Amber CRT) already cover the palettes we'd otherwise duplicate, so those are intentionally **not** re-ported.
 
-## The five themes
+## The themes we're adding
 
 | # | Theme | Character | Scope style | Blips | Decoration |
 |---|-------|-----------|-------------|-------|------------|
@@ -19,8 +19,11 @@ Capsule-radar was the original inspiration for the plane-radar themes, so this i
 | 6 | **Silent Running** | Submarine night-vision red, near-black background, monochrome | Rings (stock) | **Mono** red | Sweep (slow) |
 | 7 | **Mission Control** | NASA navy + gold, cream readouts, **starfield** behind the scope | Rings (stock) | Altitude ramp (red→white→gold) | **Starfield** |
 | 8 | **CIC** | Combat-information-center vector scope — bearing-degree ring, tick ring, square grid, `[ ]` brackets on targets, natural-color map, no sweep | **Vector** | **Mono** amber targets | None |
+| 9 | **ClaudeIC** | CIC's vector scope in Claude's colors — warm-black field, clay chrome, cream bearing labels, coral brackets | **Vector** | **Mono** coral/cream targets | None |
 
-Existing themes keep their indices (0 Phosphor, 1 Orb, 2 Amber CRT, 3 Military) so saved-theme persistence stays valid. New themes append at 4–8; `THEME_COUNT` 4 → 9. Order among the new five is cosmetic and easy to change.
+Existing themes keep their indices (0 Phosphor, 1 Orb, 2 Amber CRT, 3 Military) so saved-theme persistence stays valid. New themes append at 4–9; `THEME_COUNT` 4 → 10. Order among the new six is cosmetic and easy to change.
+
+**ClaudeIC** is a playful easter-egg original (not from the plane radar): the same `ScopeStyle::kVector` geometry as CIC, so it costs **no new drawing code** — it's purely a tenth descriptor row in Claude's palette. Chosen palette (variant A, "dark scope"): bg `#14100E`, clay chrome `#CC785C`, coral accent/brackets `#E8825A`, cream labels `#F0EEE6`; mono coral/cream targets; no sweep.
 
 ### Exact palettes (logical RGB → LVGL `lv_color_hex`)
 
@@ -37,6 +40,8 @@ These are lifted verbatim from `selmapi/ESP32-Plane-Radar/src/ui/theme_table_dat
 **Mission Control** — bg `#081228`, gold rings `#D4A544`, cream ink `#E8E2CE`, tag_type `#D4A544`, tag_alt `#B8C8E8`, track `#D4A544`, secondary `#6A84B0`, star tint `#E8E2CE`; altitude ramp `#C8332A` → `#E8E2CE` → `#D4A544`.
 
 **CIC** — bg `#000000`, green chrome rings `#2AAB5A`, bearing labels `#5AFF8A`, **amber targets** `#FFB428` / `#FFD24A`, dim amber vector `#B47A14`; **mono** amber targets, **no sweep**, `ScopeStyle::Vector`.
+
+**ClaudeIC** (new) — bg `#14100E`, clay chrome rings `#CC785C`, coral accent/brackets `#E8825A`, cream bearing labels `#F0EEE6`, dim cream `#C9C4B8`; **mono** coral/cream targets, **no sweep**, `ScopeStyle::Vector` (shares CIC's draw path). Claude's clay/coral/cream, dark-scope variant.
 
 ## Architecture (Option 2 — theme descriptor)
 
@@ -59,11 +64,11 @@ struct ThemeDesc {
     Decoration decor;
     bool       sweep;
 };
-extern const ThemeDesc kThemes[];     // indices 0..8; existing 4 first, ours appended
+extern const ThemeDesc kThemes[];     // indices 0..9; existing 4 first, ours appended
 extern const int kThemeCount;
 ```
 
-The nine rows (4 existing, re-expressed as descriptors, + 5 new) live in `src/theme_table.cpp`. Adding a future retint theme is one row.
+The ten rows (4 existing, re-expressed as descriptors, + 6 new) live in `src/theme_table.cpp`. Adding a future retint theme is one row; CIC and ClaudeIC share the one `ScopeStyle::kVector` draw path.
 
 ### Edits to upstream `src/radar_view.cpp` (minimal, marked seams)
 
@@ -84,18 +89,18 @@ Keeping the theme *data* in our own files and the `radar_view.cpp` edits at a fe
 
 | File | Change |
 |------|--------|
-| `src/radar_view.h` | `RadarTheme` enum: add 5 values, `THEME_COUNT` → 9 |
-| `src/theme_table.{h,cpp}` | **new** — `ThemeDesc` table (the 9 rows) |
-| `src/radar_view.cpp` | descriptor-driven `setTheme()`, `ScopeStyle` branch, mono blips, layer tinting, starfield + CIC-vector draw paths |
-| `src/main.cpp` | `tnames[]` (line ~299) + inline web settings picker: add the 5 names so they appear at `capsuleradar.local` and persist |
+| `src/radar_view.h` | `RadarTheme` enum: add 6 values, `THEME_COUNT` → 10 |
+| `src/theme_table.{h,cpp}` | **new** — `ThemeDesc` table (the 10 rows) |
+| `src/radar_view.cpp` | descriptor-driven `setTheme()`, `ScopeStyle` branch, mono blips, layer tinting, starfield + CIC-vector draw paths (ClaudeIC reuses the vector path) |
+| `src/main.cpp` | `tnames[]` (line ~299) + inline web settings picker: add the 6 names so they appear at `capsuleradar.local` and persist |
 | `README.md` / `docs/LISTING.md` | list the new themes (optional, low priority) |
 
 Long-press-to-cycle and web-picker persistence already key off the theme index, so both pick up the new themes for free once the enum, table, and `tnames[]` agree.
 
 ## Verification
 
-- **Primary loop:** the SDL native simulator — `pio run -e native -t exec` runs the exact LVGL UI on the Mac. Build and screenshot all 9 themes; visually confirm each new theme and confirm the original 4 are pixel-unchanged after the descriptor refactor (regression guard).
-- **Device acceptance:** flash to the connected board — `pio run -e esp32-s3-amoled-175 -t upload` (device on `/dev/cu.usbmodem*`), long-press to cycle through all 9, confirm the web picker at `capsuleradar.local`. Warn Selma before flashing if she's mid-use.
+- **Primary loop:** the SDL native simulator — `pio run -e native -t exec` runs the exact LVGL UI on the Mac. Build and screenshot all 10 themes; visually confirm each new theme and confirm the original 4 are pixel-unchanged after the descriptor refactor (regression guard).
+- **Device acceptance:** flash to the connected board — `pio run -e esp32-s3-amoled-175 -t upload` (device on `/dev/cu.usbmodem*`), long-press to cycle through all 10, confirm the web picker at `capsuleradar.local`. Warn Selma before flashing if she's mid-use.
 - No coordinate/privacy surface: this is pure theming. Nothing location-related is edited or committed (capsule already ships baked `coastline_data.h`).
 
 ## Upstream sync (this is Selma's daily-driver fork)
