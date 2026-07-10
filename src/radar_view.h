@@ -13,11 +13,10 @@ struct RadarSettings {
 
 // Selectable visual skins.
 enum RadarTheme {
-    THEME_PHOSPHOR = 0,   // green-on-black radar scope (the mockup look)
-    THEME_ORB   = 1,   // Orb scope: green gradient, grid, yellow blips
-    THEME_AMBER    = 2,   // amber CRT scope (warm monochrome chrome)
-    THEME_MILITARY = 3,   // night-vision / military green scope
-    THEME_COUNT    = 4
+    THEME_PHOSPHOR = 0, THEME_ORB = 1, THEME_AMBER = 2, THEME_MILITARY = 3,
+    THEME_VICE = 4, THEME_MIDNIGHT = 5, THEME_SILENT = 6,
+    THEME_MISSION = 7, THEME_CIC = 8, THEME_CLAUDEIC = 9,
+    THEME_COUNT = 10
 };
 
 // Flattened, display-ready info for one aircraft (detail card / list view).

@@ -137,6 +137,7 @@ static void show(lv_obj_t *o, bool v) {
 }
 
 static lv_color_t alt_color(float altFt, bool onGround) {
+    if (s_desc->blips == radar::BlipMode::kMono) return lv_color_hex(s_desc->mono);
     if (onGround)      return lv_color_hex(0x888888);
     if (altFt < 3000)  return lv_color_hex(0xFF5A3C);
     if (altFt < 10000) return lv_color_hex(0xFFB23C);
@@ -220,7 +221,7 @@ static void grid_draw_cb(lv_event_t *e) {
 
     // coastline first, so the rings/crosshair sit cleanly on top of it.
     // Steel blue + 2 px so it reads as a map outline, distinct from the green altitude trails.
-    coastline_draw(d, COAST_COLOR, 165, 2);
+    coastline_draw(d, lv_color_hex(s_desc->layer), 165, 2);
     if (s_airportsEnabled) airports_draw(d, AIRPORT_COLOR, 150);
 
     // phosphor: concentric rings + crosshair
