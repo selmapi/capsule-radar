@@ -8,6 +8,7 @@
 #include "geo.h"
 #include "coastline.h"
 #include "airports.h"
+#include "theme_table.h"
 #include <lvgl.h>
 #include <math.h>
 #include <stdio.h>
@@ -66,6 +67,7 @@
 #define WAVE_EXPAND       28.0f
 
 static int        s_theme    = THEME_PHOSPHOR;
+static const radar::ThemeDesc* s_desc = &radar::kThemes[0];
 static void      (*s_themeCb)(int) = nullptr;
 // scope "chrome" palette (rings/sweep/crosshair/labels) — retinted per theme
 static lv_color_t s_cRing = COL_GREEN, s_cLead = COL_LEAD, s_cInk = COL_INK, s_cSoft = COL_SOFT;
@@ -125,7 +127,8 @@ static std::map<std::string, std::vector<lv_point_t>> s_trails;
 static const float GX[4] = { 0.0f,  7.0f, 0.0f, -7.0f };
 static const float GY[4] = { -11.0f, 5.0f, 8.0f, 5.0f };
 
-static inline bool orb() { return s_theme == THEME_ORB; }
+static inline radar::ScopeStyle scopeStyle() { return s_desc->scope; }
+static inline bool orb() { return scopeStyle() == radar::ScopeStyle::kGrid; }  // thin alias; existing call sites keep working
 
 static void show(lv_obj_t *o, bool v) {
     if (!o) return;
@@ -242,7 +245,7 @@ static void grid_draw_cb(lv_event_t *e) {
 
 // =============================== sweep =======================================
 static void sweep_draw_cb(lv_event_t *e) {
-    if (orb()) return;
+    if (orb() || !s_desc->sweep) return;
     lv_draw_ctx_t *dctx = lv_event_get_draw_ctx(e);
     const lv_point_t center = { s_cx, s_cy };
     const float R = (float)RADAR_R_OUTER_PX;
@@ -542,19 +545,17 @@ static void pulse_anim_cb(void *obj, int32_t v) {
 namespace radar {
 
 void setTheme(int t) {
+    // Wrap on the enum THEME_COUNT (still 4 here), NOT kThemeCount (10). This keeps
+    // Task 2 a pure no-op refactor: only themes 0-3 reachable until Task 3 bumps
+    // THEME_COUNT to 10. Invariant: THEME_COUNT <= kThemeCount (kThemes[] indexing stays safe).
     s_theme = ((t % THEME_COUNT) + THEME_COUNT) % THEME_COUNT;
-    const bool drg = orb();
+    s_desc  = &radar::kThemes[s_theme];
+    const bool drg = (s_desc->scope == radar::ScopeStyle::kGrid);
 
-    switch (s_theme) {                          // pick the scope chrome palette
-        case THEME_AMBER:
-            s_cRing = lv_color_hex(0xFFB23C); s_cLead = lv_color_hex(0xFFD27A);
-            s_cInk  = lv_color_hex(0xFFE9C2); s_cSoft = lv_color_hex(0xFFC98A); break;
-        case THEME_MILITARY:
-            s_cRing = lv_color_hex(0x49C46B); s_cLead = lv_color_hex(0x76E08C);
-            s_cInk  = lv_color_hex(0xE0FFE6); s_cSoft = lv_color_hex(0x9FD7A8); break;
-        default:                                // phosphor (orb uses its own colors)
-            s_cRing = COL_GREEN; s_cLead = COL_LEAD; s_cInk = COL_INK; s_cSoft = COL_SOFT; break;
-    }
+    s_cRing = lv_color_hex(s_desc->ring);
+    s_cLead = lv_color_hex(s_desc->lead);
+    s_cInk  = lv_color_hex(s_desc->ink);
+    s_cSoft = lv_color_hex(s_desc->soft);
 
     if (s_parent) {
         if (drg) {
@@ -562,15 +563,20 @@ void setTheme(int t) {
             lv_obj_set_style_bg_grad_color(s_parent, ORB_BG_BOT, 0);
             lv_obj_set_style_bg_grad_dir(s_parent, LV_GRAD_DIR_VER, 0);
         } else {
-            lv_obj_set_style_bg_color(s_parent, lv_color_black(), 0);
+            lv_obj_set_style_bg_color(s_parent, lv_color_hex(s_desc->bg), 0);
             lv_obj_set_style_bg_grad_dir(s_parent, LV_GRAD_DIR_NONE, 0);
         }
         lv_obj_set_style_bg_opa(s_parent, LV_OPA_COVER, 0);
     }
-    for (int i = 0; i < 4; ++i) show(s_rose[i], !drg);   // hide compass in Orb
-    show(s_rangeLbl, !drg && s_rangeLblVisible);
-    show(s_centerDot, !drg);                             // orb draws an orange triangle instead
-    show(s_pulse, !drg);
+
+    // Chrome visibility now keys on scope==kRings (was `!drg`). For themes 0-3 this is
+    // identical to the old behavior (Orb=kGrid hidden; the other three=kRings shown);
+    // it additionally hides the rose/centerDot on the future kVector themes.
+    const bool ringsChrome = (s_desc->scope == radar::ScopeStyle::kRings);
+    for (int i = 0; i < 4; ++i) show(s_rose[i], ringsChrome);
+    show(s_rangeLbl, ringsChrome && s_rangeLblVisible);
+    show(s_centerDot, ringsChrome);
+    show(s_pulse, ringsChrome);
 
     // retint the persistent chrome objects for the active palette
     if (s_rose[0]) lv_obj_set_style_text_color(s_rose[0], s_cInk, 0);
