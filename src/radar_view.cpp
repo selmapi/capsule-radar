@@ -80,6 +80,7 @@ static lv_color_t *s_flowBuf  = nullptr;
 static lv_obj_t  *s_rose[4]   = {nullptr, nullptr, nullptr, nullptr};
 static lv_obj_t  *s_centerDot = nullptr;
 static lv_obj_t  *s_pulse     = nullptr;
+static lv_obj_t  *s_mascot    = nullptr;
 static lv_obj_t  *s_rangeLbl  = nullptr;
 static bool       s_rangeLblVisible = true;
 static bool       s_sweepEnabled    = true;
@@ -673,6 +674,7 @@ void setTheme(int t) {
     show(s_rangeLbl, ringsChrome && s_rangeLblVisible);
     show(s_centerDot, ringsChrome);
     show(s_pulse, ringsChrome);
+    if (s_mascot) show(s_mascot, s_theme == THEME_CLAUDEIC);
 
     // retint the persistent chrome objects for the active palette
     if (s_rose[0]) lv_obj_set_style_text_color(s_rose[0], s_cInk, 0);
@@ -799,6 +801,50 @@ void init(void *lv_parent) {
     s_sweepDeg = 0.0f;
     s_prevSweepDeg = 0.0f;
     if (!s_timer) s_timer = lv_timer_create(sweep_timer_cb, SWEEP_FRAME_MS, nullptr);
+
+    // ClaudeIC-only mascot badge (built from styled rects; shown/hidden in setTheme)
+    {
+        const lv_color_t clay = lv_color_hex(radar::kThemes[THEME_CLAUDEIC].ring);   // #CC785C
+        const lv_color_t dark = lv_color_hex(radar::kThemes[THEME_CLAUDEIC].bg);     // #14100E
+        s_mascot = lv_obj_create(parent);
+        lv_obj_remove_style_all(s_mascot);
+        lv_obj_set_size(s_mascot, 26, 30);
+        lv_obj_clear_flag(s_mascot, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_align(s_mascot, LV_ALIGN_CENTER, 150, 150);   // ~4-5 o'clock, inside the round safe area
+        lv_obj_set_style_bg_opa(s_mascot, LV_OPA_TRANSP, 0);
+
+        // body: rounded-rect, top 22px
+        lv_obj_t *body = lv_obj_create(s_mascot);
+        lv_obj_remove_style_all(body);
+        lv_obj_set_size(body, 26, 22);
+        lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 0);
+        lv_obj_clear_flag(body, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_style_radius(body, 5, 0);
+        lv_obj_set_style_bg_color(body, clay, 0);
+        lv_obj_set_style_bg_opa(body, LV_OPA_COVER, 0);
+
+        // two legs (below body, gap in the middle)
+        for (int i = 0; i < 2; ++i) {
+            lv_obj_t *leg = lv_obj_create(s_mascot);
+            lv_obj_remove_style_all(leg);
+            lv_obj_set_size(leg, 5, 6);
+            lv_obj_align(leg, LV_ALIGN_BOTTOM_MID, i == 0 ? -6 : 6, 0);
+            lv_obj_clear_flag(leg, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_set_style_bg_color(leg, clay, 0);
+            lv_obj_set_style_bg_opa(leg, LV_OPA_COVER, 0);
+        }
+
+        // two eyes (dark squares, upper-middle of the body)
+        for (int i = 0; i < 2; ++i) {
+            lv_obj_t *eye = lv_obj_create(s_mascot);
+            lv_obj_remove_style_all(eye);
+            lv_obj_set_size(eye, 4, 5);
+            lv_obj_align(eye, LV_ALIGN_TOP_MID, i == 0 ? -5 : 5, 7);
+            lv_obj_clear_flag(eye, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_set_style_bg_color(eye, dark, 0);
+            lv_obj_set_style_bg_opa(eye, LV_OPA_COVER, 0);
+        }
+    }
 
     setTheme(s_theme);
 }
