@@ -29,7 +29,7 @@
 |------|----------------|
 | `src/theme_table.h` (new) | `ScopeStyle`/`BlipMode`/`Decoration` enums + `ThemeDesc` struct + `kThemes[]`/`kThemeCount` externs |
 | `src/theme_table.cpp` (new) | the 10 `ThemeDesc` rows (data only) |
-| `src/mascot_img.h` (new) | hand-encoded 8-bit Claude mascot bitmap for the ClaudeIC badge |
+| (mascot) | built from styled LVGL rects (body + 2 eyes + 2 legs) inside `radar_view.cpp` `init()` — no bitmap file needed |
 | `src/radar_view.h` (mod) | `RadarTheme` enum: add 6 values, `THEME_COUNT` → 10 |
 | `src/radar_view.cpp` (mod) | descriptor-driven `setTheme()`; `scopeStyle()` replacing `orb()`; mono blips; layer tinting; starfield + vector draw paths; mascot overlay |
 | `src/main.cpp` (mod) | `tnames[]` + inline web settings picker: 6 new names |
@@ -321,23 +321,26 @@ git commit --allow-empty -m "test(themes): confirm ClaudeIC renders on the vecto
 
 ## Task 7: ClaudeIC mascot badge
 
+**Approach:** build the mascot from styled LVGL objects (no bitmap file). A parent container holds a rounded-rect body, two dark eye squares, and two legs — reproducing the reference pixel-creature. Colors come from the ClaudeIC descriptor; the whole group is shown only on ClaudeIC.
+
 **Files:**
-- Create: `src/mascot_img.h`
-- Modify: `src/radar_view.cpp` (create a mascot `lv_canvas` or `lv_img` in `init()`; show only when `s_theme == THEME_CLAUDEIC`)
+- Modify: `src/radar_view.cpp` (build the mascot group in `init()`; show only when `s_theme == THEME_CLAUDEIC`)
 
-- [ ] **Step 1: Encode the mascot.** In `mascot_img.h`, define a small pixel grid (e.g. 12×12) as a `static const uint8_t kMascotMask[12][12]` where 1 = body, 0 = transparent, and mark the two eye cells with a sentinel (2) so they punch the bg color. Body = clay `#CC785C`, eyes = bg `#14100E`. (Shape: rounded-square body rows 1–8, two eyes at ~row 4 cols 4 and 7, two legs rows 9–10 at cols 4 and 8.)
+- [ ] **Step 1: Build the mascot in `init()`** (after the other overlay objects are created). Create a small parent `lv_obj_t *s_mascot` (static, file-scope) with no scroll/click, transparent bg, sized ~26×30. Add children:
+  - **body:** rounded-rect `lv_obj`, ~26×22 at top, `radius ~5`, `bg_color = lv_color_hex(kThemes[THEME_CLAUDEIC].ring)` (clay `#CC785C`), `bg_opa COVER`.
+  - **two eyes:** small dark `lv_obj` squares (~4×5), `bg_color = lv_color_hex(kThemes[THEME_CLAUDEIC].bg)` (warm-black `#14100E`), positioned in the upper-middle of the body (left & right of center).
+  - **two legs:** small clay rects (~4×6) at the body's bottom, one left, one right, with a gap between (so they read as legs).
+  Position the parent with `lv_obj_align(s_mascot, LV_ALIGN_CENTER, +150, +150)` — inside the round safe area at ~4–5 o'clock on the 466 panel. Verify the offset keeps it within `RADAR_R_OUTER_PX` of center (|150,150| ≈ 212 < outer radius). Keep colors hard-referenced to the ClaudeIC descriptor (the badge is ClaudeIC-only, so it doesn't need to retint per theme).
 
-- [ ] **Step 2: Draw it once into a canvas in `init()`**, sized ~24×24 (2× the grid, nearest-neighbor), positioned at `LV_ALIGN_CENTER` with an offset that lands it **inside the round safe area at ~4–5 o'clock** (e.g. `dx=+150, dy=+150` from center on the 466 panel — verify it sits inside `RADAR_R_OUTER_PX`). Store the handle in a static `s_mascot`.
+- [ ] **Step 2: Toggle visibility in `setTheme()`** — in the show() block, add: `show(s_mascot, s_theme == THEME_CLAUDEIC);`. (The `show()` helper add/removes `LV_OBJ_FLAG_HIDDEN`; hiding the parent hides its children.)
 
-- [ ] **Step 3: Toggle visibility in `setTheme()`** — in the show()/retint block: `show(s_mascot, s_theme == THEME_CLAUDEIC);`.
+- [ ] **Step 3: Verify (compile).** `pio run -e native` and `pio run -e esp32-s3-amoled-175` → SUCCESS. Reason in the report: on ClaudeIC the clay mascot with dark eyes + legs sits at lower-right inside the ring; on all other themes it's hidden. Confirm creation order (mascot created before the final `setTheme(s_theme)` call at the end of `init()`, so the initial show/hide is correct).
 
-- [ ] **Step 4: Verify** — cycle to ClaudeIC: the mascot appears at lower-right inside the ring; cycle away: it disappears on all other themes. Screenshot ClaudeIC with the badge, and one other theme without it.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add src/mascot_img.h src/radar_view.cpp
-git commit -m "feat(themes): ClaudeIC 8-bit mascot badge (ClaudeIC-only overlay)"
+git add src/radar_view.cpp
+git commit -m "feat(themes): ClaudeIC mascot badge (styled-rect overlay, ClaudeIC-only)"
 ```
 
 ---
