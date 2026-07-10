@@ -219,6 +219,19 @@ static void grid_draw_cb(lv_event_t *e) {
         return;
     }
 
+    if (s_desc->decor == radar::Decoration::kStarfield) {
+        lv_draw_rect_dsc_t st; lv_draw_rect_dsc_init(&st);
+        st.bg_color = s_cInk; st.radius = LV_RADIUS_CIRCLE;
+        for (int i = 0; i < 60; ++i) {
+            uint32_t h = (uint32_t)(i * 2654435761u);
+            lv_coord_t x = (lv_coord_t)(h % SCREEN_W);
+            lv_coord_t y = (lv_coord_t)((h >> 12) % SCREEN_H);
+            st.bg_opa = (lv_opa_t)(50 + ((h >> 5) & 90));   // fixed per-star brightness (50..140)
+            lv_area_t r = { x, y, (lv_coord_t)(x+1), (lv_coord_t)(y+1) };
+            lv_draw_rect(d, &st, &r);
+        }
+    }
+
     // coastline first, so the rings/crosshair sit cleanly on top of it.
     // Steel blue + 2 px so it reads as a map outline, distinct from the green altitude trails.
     coastline_draw(d, lv_color_hex(s_desc->layer), 165, 2);
