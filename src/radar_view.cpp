@@ -219,6 +219,53 @@ static void grid_draw_cb(lv_event_t *e) {
         return;
     }
 
+    if (scopeStyle() == radar::ScopeStyle::kVector) {
+        // (a) natural-color map (NOT s_desc->layer — CIC's layer is green; we want a real map)
+        coastline_draw(d, lv_color_hex(0x4E86C6), 150, 2);     // water/coast blue
+        if (s_airportsEnabled) airports_draw(d, lv_color_hex(0x8A93A6), 140);  // muted gray
+
+        // (b) square grid (like orb, but chrome-colored, faint)
+        lv_draw_line_dsc_t gl; lv_draw_line_dsc_init(&gl);
+        gl.color = s_cRing; gl.width = 1; gl.opa = 40;
+        const int step = 46;
+        for (int x = s_cx % step; x < SCREEN_W; x += step) {
+            lv_point_t p1 = {(lv_coord_t)x, 0}, p2 = {(lv_coord_t)x, SCREEN_H-1};
+            lv_draw_line(d, &gl, &p1, &p2);
+        }
+        for (int y = s_cy % step; y < SCREEN_H; y += step) {
+            lv_point_t p1 = {0, (lv_coord_t)y}, p2 = {SCREEN_W-1, (lv_coord_t)y};
+            lv_draw_line(d, &gl, &p1, &p2);
+        }
+
+        // (c) bearing ring + inner tick ring
+        lv_draw_arc_dsc_t ad; lv_draw_arc_dsc_init(&ad);
+        ad.color = s_cRing; ad.width = 2;
+        ad.opa = 150; lv_draw_arc(d, &ad, &c, RADAR_R_OUTER_PX, 0, 360);
+        ad.opa = 70;  lv_draw_arc(d, &ad, &c, RADAR_R_OUTER_PX - 10, 0, 360);
+
+        // (d) minor ticks every 30 deg, from just inside the ring
+        lv_draw_line_dsc_t tk; lv_draw_line_dsc_init(&tk);
+        tk.color = s_cRing; tk.width = 2; tk.opa = 150;
+        for (int deg = 0; deg < 360; deg += 30) {
+            lv_point_t a = rim_point((float)deg, (float)RADAR_R_OUTER_PX - 2);
+            lv_point_t b = rim_point((float)deg, (float)RADAR_R_OUTER_PX - 14);
+            lv_draw_line(d, &tk, &a, &b);
+        }
+
+        // (e) cardinal bearing-degree labels 000/090/180/270, just inside the ring
+        lv_draw_label_dsc_t lb; lv_draw_label_dsc_init(&lb);
+        lb.font = &lv_font_montserrat_14; lb.color = s_cInk;
+        lb.align = LV_TEXT_ALIGN_CENTER;
+        struct { int deg; const char* t; } labs[4] = {{0,"000"},{90,"090"},{180,"180"},{270,"270"}};
+        for (auto &L : labs) {
+            lv_point_t p = rim_point((float)L.deg, (float)RADAR_R_OUTER_PX - 30);
+            lv_area_t a = { (lv_coord_t)(p.x-18), (lv_coord_t)(p.y-9),
+                            (lv_coord_t)(p.x+18), (lv_coord_t)(p.y+9) };
+            lv_draw_label(d, &lb, &a, L.t, NULL);
+        }
+        return;
+    }
+
     if (s_desc->decor == radar::Decoration::kStarfield) {
         lv_draw_rect_dsc_t st; lv_draw_rect_dsc_init(&st);
         st.bg_color = s_cInk; st.radius = LV_RADIUS_CIRCLE;
@@ -450,9 +497,40 @@ static void draw_offrange(lv_draw_ctx_t *d, const AcDraw &ac) {
     lv_draw_polygon(d, &td, tri, 3);
 }
 
+// CIC/ClaudeIC vector-scope target marker: a "[ ]" bracket pair (four L-shaped
+// corner marks) around the aircraft position, plus a small center dot.
+static void draw_bracket(lv_draw_ctx_t *d, const AcDraw &ac) {
+    const lv_coord_t b = 9, len = 4;
+    const lv_coord_t x = ac.pos.x, y = ac.pos.y;
+    lv_draw_line_dsc_t bl;
+    lv_draw_line_dsc_init(&bl);
+    bl.color = ac.color;
+    bl.width = 2;
+    const lv_coord_t cx[4] = { (lv_coord_t)(x - b), (lv_coord_t)(x + b), (lv_coord_t)(x + b), (lv_coord_t)(x - b) };
+    const lv_coord_t cy[4] = { (lv_coord_t)(y - b), (lv_coord_t)(y - b), (lv_coord_t)(y + b), (lv_coord_t)(y + b) };
+    const lv_coord_t sx[4] = { 1, -1, -1, 1 };   // horizontal leg direction, per corner
+    const lv_coord_t sy[4] = { 1, 1, -1, -1 };   // vertical leg direction, per corner
+    for (int i = 0; i < 4; ++i) {
+        lv_point_t corner = { cx[i], cy[i] };
+        lv_point_t hLeg = { (lv_coord_t)(cx[i] + sx[i] * len), cy[i] };
+        lv_point_t vLeg = { cx[i], (lv_coord_t)(cy[i] + sy[i] * len) };
+        lv_draw_line(d, &bl, &corner, &hLeg);
+        lv_draw_line(d, &bl, &corner, &vLeg);
+    }
+
+    lv_draw_rect_dsc_t dot;
+    lv_draw_rect_dsc_init(&dot);
+    dot.bg_color = ac.color;
+    dot.bg_opa = LV_OPA_COVER;
+    dot.radius = LV_RADIUS_CIRCLE;
+    lv_area_t dr = { (lv_coord_t)(x - 1), (lv_coord_t)(y - 1), (lv_coord_t)(x + 1), (lv_coord_t)(y + 1) };
+    lv_draw_rect(d, &dot, &dr);
+}
+
 static void ac_draw_cb(lv_event_t *e) {
     lv_draw_ctx_t *d = lv_event_get_draw_ctx(e);
     const bool drg = orb();
+    const bool vec = (scopeStyle() == radar::ScopeStyle::kVector);
     int balls = 0, arrows = 0;
 
     for (const AcDraw &ac : s_acs) {
@@ -468,22 +546,26 @@ static void ac_draw_cb(lv_event_t *e) {
                 arrows++;
             }
         } else {
-            if (!ac.inRange) continue;            // phosphor shows in-range traffic only
+            if (!ac.inRange) continue;            // phosphor/vector show in-range traffic only
             draw_trail(d, ac, ac.color);
-            const float th = ((ac.track != ac.track) ? 0.0f : ac.track) * (float)M_PI / 180.0f;
-            const float c = cosf(th), s = sinf(th);
-            lv_point_t pts[4];
-            for (int i = 0; i < 4; ++i) {
-                const float x = GX[i] * c - GY[i] * s;
-                const float y = GX[i] * s + GY[i] * c;
-                pts[i].x = (lv_coord_t)(ac.pos.x + (lv_coord_t)lroundf(x));
-                pts[i].y = (lv_coord_t)(ac.pos.y + (lv_coord_t)lroundf(y));
+            if (vec) {
+                draw_bracket(d, ac);
+            } else {
+                const float th = ((ac.track != ac.track) ? 0.0f : ac.track) * (float)M_PI / 180.0f;
+                const float c = cosf(th), s = sinf(th);
+                lv_point_t pts[4];
+                for (int i = 0; i < 4; ++i) {
+                    const float x = GX[i] * c - GY[i] * s;
+                    const float y = GX[i] * s + GY[i] * c;
+                    pts[i].x = (lv_coord_t)(ac.pos.x + (lv_coord_t)lroundf(x));
+                    pts[i].y = (lv_coord_t)(ac.pos.y + (lv_coord_t)lroundf(y));
+                }
+                lv_draw_rect_dsc_t g;
+                lv_draw_rect_dsc_init(&g);
+                g.bg_color = ac.color;
+                g.bg_opa = LV_OPA_COVER;
+                lv_draw_polygon(d, &g, pts, 4);
             }
-            lv_draw_rect_dsc_t g;
-            lv_draw_rect_dsc_init(&g);
-            g.bg_color = ac.color;
-            g.bg_opa = LV_OPA_COVER;
-            lv_draw_polygon(d, &g, pts, 4);
             if (ac.emergency) {
                 lv_draw_arc_dsc_t h;
                 lv_draw_arc_dsc_init(&h);
