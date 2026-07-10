@@ -155,7 +155,10 @@ Delete the old `static inline bool orb() { return s_theme == THEME_ORB; }` at li
 
 ```cpp
 void setTheme(int t) {
-    s_theme = ((t % kThemeCount) + kThemeCount) % kThemeCount;
+    // Wrap on the enum THEME_COUNT (still 4 here), NOT kThemeCount (10). This keeps
+    // Task 2 a pure no-op refactor: only themes 0-3 are reachable until Task 3 bumps
+    // THEME_COUNT to 10. Invariant: THEME_COUNT <= kThemeCount (indexing kThemes[] stays safe).
+    s_theme = ((t % THEME_COUNT) + THEME_COUNT) % THEME_COUNT;
     s_desc  = &kThemes[s_theme];
     const bool drg = (s_desc->scope == ScopeStyle::kGrid);
 
@@ -350,7 +353,16 @@ const char *tnames[] = {"Phosphor","Orb","Amber CRT","Military",
                         "Mission Control","CIC","ClaudeIC"};
 ```
 
-- [ ] **Step 2: Add the 6 options to the web settings picker.** Find the theme `<select>`/option list in the inline HTML string in `main.cpp` and add the new names with their indices (grep for `Phosphor` in `main.cpp` to locate it). Persistence already keys off the index via `setThemeChangedCb`, so no storage change is needed.
+- [ ] **Step 2: Widen the web picker loop.** The option-building loop at `main.cpp:301` is hardcoded `for (int i = 0; i < 4; ++i)`. Change the bound to `THEME_COUNT` (now 10) so all ten `tnames[]` entries are emitted:
+
+```cpp
+for (int i = 0; i < THEME_COUNT; ++i) {
+    char o[80];
+    snprintf(o, sizeof(o), "<option value=%d%s>%s</option>", i, i == th ? " selected" : "", tnames[i]);
+    topts += o;
+}
+```
+Confirm `THEME_COUNT` is visible in `main.cpp` (it includes `radar_view.h`). Persistence already keys off the index via `setThemeChangedCb`, so no storage change is needed. (`tnames[]` now has 10 entries from Step 1, so the widened loop is in-bounds.)
 
 - [ ] **Step 3: Verify (firmware build only — web needs the device).** `pio run -e esp32-s3-amoled-175` compiles clean. Full web-picker check happens on-device in Task 9.
 
