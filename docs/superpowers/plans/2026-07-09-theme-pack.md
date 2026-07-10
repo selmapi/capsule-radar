@@ -188,7 +188,9 @@ void setTheme(int t) {
     show(s_centerDot, ringsChrome);
     show(s_pulse, ringsChrome);
     // ... then the existing text_color retints on s_rose/s_centerDot/s_pulse/s_rangeLbl ...
-    setSweepEnabled(s_desc->sweep);   // NEW: sweep visibility now theme-driven
+    // NOTE: do NOT call setSweepEnabled() here — that would clobber the user's persisted
+    // sweep toggle on every theme change. Sweep stays a user preference; themes that must
+    // never sweep are suppressed structurally in sweep_draw_cb (see Step 3b).
     flow_redraw_all();
     if (s_parent) lv_obj_invalidate(s_parent);
     if (s_themeCb) s_themeCb(s_theme);
@@ -196,7 +198,9 @@ void setTheme(int t) {
 ```
 Note: `THEME_COUNT` in `radar_view.h` still exists but `setTheme` now uses `kThemeCount`; keep them equal (Task 3 bumps both).
 
-- [ ] **Step 4: Verify existing themes unchanged** — `pio run -e native -t exec`, cycle 0–3, screenshot, compare to Step 1. Phosphor/Orb/Amber/Military must be pixel-identical.
+- [ ] **Step 3b: Structural sweep suppression.** In `sweep_draw_cb`, change the early-return `if (orb()) return;` to `if (orb() || !s_desc->sweep) return;`. This suppresses the sweep for any `sweep=false` theme (Orb via `orb()`; later Mission Control / CIC / ClaudeIC via the descriptor) while keeping the user's on/off preference intact for the sweep-capable ring themes. (This single gate also covers CIC/ClaudeIC, so Task 5 needs no separate vector sweep suppression.)
+
+- [ ] **Step 4: Verify existing themes unchanged** — `pio run -e native -t exec`, cycle 0–3, screenshot, compare to Step 1. Phosphor/Orb/Amber/Military must be pixel-identical. (Subagent verifies by compile + code inspection; visual diff happens with a human driving the sim.)
 
 - [ ] **Step 5: Commit**
 
@@ -288,7 +292,7 @@ git commit -m "feat(themes): add Mission Control with starfield decoration"
 
 - [ ] **Step 1: Vector chrome in `grid_draw_cb`.** Add a `if (scopeStyle() == ScopeStyle::kVector) { ... return; }` branch (sibling to the `orb()` branch). Draw, in order: (a) the natural-color map — `coastline_draw(d, lv_color_hex(0x4E86C6), 150, 2)` (water blue) + `airports_draw(d, lv_color_hex(0x8A93A6), 140)`; (b) a **square grid** (reuse the orb grid loop, color `s_cRing` at low opa); (c) a **bearing ring** at `RADAR_R_OUTER_PX` (`s_cRing`) plus an inner tick ring; (d) **minor ticks** every 30° and **degree labels** 000/090/180/270 in `s_cInk` (montserrat_12) via `rim_point()` for placement. No sweep.
 
-- [ ] **Step 2: Suppress sweep for vector.** In `sweep_draw_cb`, change the early return to `if (orb() || scopeStyle() == ScopeStyle::kVector) return;` (belt-and-suspenders; `sweep=false` in the table already hides the layer).
+- [ ] **Step 2: Sweep is already suppressed.** No change needed — Task 2's `sweep_draw_cb` gate (`if (orb() || !s_desc->sweep) return;`) already suppresses the sweep for CIC/ClaudeIC (both `sweep=false`). Just confirm no sweep renders on the vector themes.
 
 - [ ] **Step 3: Bracket targets in `ac_draw_cb`.** Add a vector branch in the per-aircraft loop: instead of the rotated glyph, draw a `[ ]` bracket pair around `ac.pos` (four short `lv_draw_line`s forming corner ticks, color `alt_color()` which is mono amber) + a small center dot. Keep the floating call/alt labels (they read well on the vector scope). Emergency halo stays.
 
