@@ -264,6 +264,14 @@ static void grid_draw_cb(lv_event_t *e) {
                             (lv_coord_t)(p.x+18), (lv_coord_t)(p.y+9) };
             lv_draw_label(d, &lb, &a, L.t, NULL);
         }
+
+        // center "you are here" crosshair
+        lv_draw_line_dsc_t cx; lv_draw_line_dsc_init(&cx);
+        cx.color = s_cInk; cx.width = 1; cx.opa = 220;
+        lv_point_t chl = {(lv_coord_t)(s_cx-6), s_cy}, chr = {(lv_coord_t)(s_cx+6), s_cy};
+        lv_point_t cvt = {s_cx, (lv_coord_t)(s_cy-6)}, cvb = {s_cx, (lv_coord_t)(s_cy+6)};
+        lv_draw_line(d, &cx, &chl, &chr);
+        lv_draw_line(d, &cx, &cvt, &cvb);
         return;
     }
 
@@ -642,9 +650,8 @@ static void pulse_anim_cb(void *obj, int32_t v) {
 namespace radar {
 
 void setTheme(int t) {
-    // Wrap on the enum THEME_COUNT (still 4 here), NOT kThemeCount (10). This keeps
-    // Task 2 a pure no-op refactor: only themes 0-3 reachable until Task 3 bumps
-    // THEME_COUNT to 10. Invariant: THEME_COUNT <= kThemeCount (kThemes[] indexing stays safe).
+    // Clamp to a valid theme index for any input (negative, >= count). THEME_COUNT
+    // (radar_view.h) must equal kThemeCount (theme_table.cpp) — both are 10.
     s_theme = ((t % THEME_COUNT) + THEME_COUNT) % THEME_COUNT;
     s_desc  = &radar::kThemes[s_theme];
     const bool drg = (s_desc->scope == radar::ScopeStyle::kGrid);

@@ -12,6 +12,7 @@
 #include "photo.h"
 #include "photo_client.h"
 #include "radar_view.h"
+#include "theme_table.h"
 #include "ui.h"
 #include "display.h"                  // M0: CO5300 + LVGL bring-up
 #include "imu_qmi8658.h"             // face-down sleep
@@ -296,13 +297,10 @@ static void handleRoot() {
                  r, (r == (int)(g_settings.rangeKm + 0.5f)) ? " selected" : "", r * ufac, uname);
         ropts += o;
     }
-    const char *tnames[] = {"Phosphor", "Orb", "Amber CRT", "Military",
-                            "Vice", "Midnight", "Silent Running",
-                            "Mission Control", "CIC", "ClaudeIC"};
     String topts;
     for (int i = 0; i < THEME_COUNT; ++i) {
-        char o[80];
-        snprintf(o, sizeof(o), "<option value=%d%s>%s</option>", i, i == th ? " selected" : "", tnames[i]);
+        char o[96];
+        snprintf(o, sizeof(o), "<option value=%d%s>%s</option>", i, i == th ? " selected" : "", radar::kThemes[i].name);
         topts += o;
     }
     const int idleSecs[] = {10, 20, 30, 60, 120, 300, 1800, 3600, 7200, 14400, 28800};
