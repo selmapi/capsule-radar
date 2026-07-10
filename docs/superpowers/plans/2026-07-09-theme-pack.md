@@ -255,7 +255,7 @@ git commit -m "feat(themes): add Vice, Midnight, Silent Running (retints + mono 
 **Files:**
 - Modify: `src/radar_view.cpp` (new `starfield_draw_cb` layer or hook in `grid_draw_cb`; created in `init()`)
 
-- [ ] **Step 1: Add a deterministic starfield draw.** In `grid_draw_cb`, before the rings block (non-vector branch), when `s_desc->decor == Decoration::kStarfield`, draw ~60 faint star dots at fixed pseudo-random positions (deterministic — a fixed seed array or `(i*2654435761u)`-hashed coords so it doesn't shimmer). Star color = `s_cInk` (cream) at low, slowly-pulsing opacity keyed off `s_frameCtr`. Draw as 1–2 px `lv_draw_rect` dots. Keep it behind the rings/coastline.
+- [ ] **Step 1: Add a static deterministic starfield draw.** In `grid_draw_cb`, at the very TOP of the non-orb branch (before the coastline/rings, so stars sit behind everything), when `s_desc->decor == Decoration::kStarfield`, draw ~60 faint star dots at fixed hashed positions. Deterministic (hash of `i`) so it never shimmers; per-star opacity varied by the hash for a natural look, but NOT animated — so the grid layer's existing invalidation cadence (theme change / coastline reproject) is the only redraw. No per-frame invalidation, no `sweep_timer_cb` change (twinkle is a deferred nicety — see Open Items).
 
 ```cpp
 if (s_desc->decor == Decoration::kStarfield) {
@@ -265,14 +265,12 @@ if (s_desc->decor == Decoration::kStarfield) {
         uint32_t h = (uint32_t)(i * 2654435761u);
         lv_coord_t x = (lv_coord_t)(h % SCREEN_W);
         lv_coord_t y = (lv_coord_t)((h >> 12) % SCREEN_H);
-        uint8_t tw = (uint8_t)((h >> 5) & 63);
-        st.bg_opa = (lv_opa_t)(40 + ((s_frameCtr + tw) % 64));   // gentle twinkle
+        st.bg_opa = (lv_opa_t)(50 + ((h >> 5) & 90));   // fixed per-star brightness (50..140)
         lv_area_t r = { x, y, (lv_coord_t)(x+1), (lv_coord_t)(y+1) };
         lv_draw_rect(d, &st, &r);
     }
 }
 ```
-Ensure the starfield layer/grid is invalidated periodically for the twinkle (piggyback on `sweep_timer_cb`'s existing invalidation when `decor==kStarfield`; keep it cheap).
 
 - [ ] **Step 2: Verify** — cycle to theme 7. Expect navy field, gold rings, cream labels, faint twinkling stars behind the scope, altitude-colored glyphs (ramp red→white→gold is approximated by the stock ramp for v1 — see Open Items). Screenshot.
 
@@ -393,3 +391,4 @@ git commit -m "feat(themes): list all 10 themes in HUD + web picker"
 - **Exact altitude ramps** for Vice / Midnight / Mission Control: v1 uses capsule's stock altitude ramp; the plane-radar per-theme 3-stop ramps are available (`theme_table_data.cpp`) if Selma wants exact parity — would extend `ThemeDesc` with 3 ramp stops + a `RampMode`. Flagged, not built.
 - **Silent Running sweep speed** (plane-radar ran it slow): the descriptor has no per-theme sweep period; add one only if Selma asks.
 - **Mascot placement** default is ~4–5 o'clock; bottom-center / top-right are one-offset changes.
+- **Starfield twinkle** — v1 ships a static starfield (deterministic, zero per-frame cost). Animating it would need a dedicated lightweight star layer (so twinkle doesn't force redraws of the coastline/rings) — add only if Selma wants it.
