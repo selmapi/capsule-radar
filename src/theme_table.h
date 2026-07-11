@@ -6,6 +6,7 @@ namespace radar {
 enum class ScopeStyle : uint8_t { kRings, kGrid, kVector };   // kRings=stock, kGrid=Orb, kVector=CIC/ClaudeIC
 enum class BlipMode   : uint8_t { kAltRamp, kMono };          // altitude color-code vs single hue
 enum class Decoration : uint8_t { kNone, kSweep, kStarfield };
+enum class BlipShape  : uint8_t { kAuto, kChevron, kSilhouette, kDiamond };
 
 // One theme = chrome palette + background + scope geometry + blip policy + decoration.
 // Colors are 0xRRGGBB logical RGB (fed to lv_color_hex). `layer` tints the
@@ -24,6 +25,8 @@ struct ThemeDesc {
     uint32_t   mono;  // blip color when blips == kMono
     Decoration decor;
     bool       sweep;
+    BlipShape  shape;
+    bool       outline;
 };
 
 extern const ThemeDesc kThemes[];
