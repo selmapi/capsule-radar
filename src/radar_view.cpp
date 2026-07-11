@@ -536,6 +536,76 @@ static void draw_bracket(lv_draw_ctx_t *d, const AcDraw &ac) {
     lv_draw_rect(d, &dot, &dr);
 }
 
+// ---- Theme Pack 2: per-theme blip shapes (BlipShape::kChevron/kSilhouette/kDiamond) ----
+
+// rotate a local point (lx,ly) by the aircraft's track and offset to ac.pos
+static inline lv_point_t blip_rot(const AcDraw &ac, float lx, float ly) {
+    const float th = ((ac.track != ac.track) ? 0.0f : ac.track) * (float)M_PI / 180.0f;
+    const float c = cosf(th), s = sinf(th);
+    lv_point_t p;
+    p.x = (lv_coord_t)(ac.pos.x + (lv_coord_t)lroundf(lx * c - ly * s));
+    p.y = (lv_coord_t)(ac.pos.y + (lv_coord_t)lroundf(lx * s + ly * c));
+    return p;
+}
+
+// shared fill dsc for the shape helpers: ac.color fill, + black cel-shade border when
+// the active theme's s_desc->outline is set (Borderlands).
+static inline void blip_fill_dsc(lv_draw_rect_dsc_t &g, const AcDraw &ac) {
+    lv_draw_rect_dsc_init(&g);
+    g.bg_color = ac.color;
+    g.bg_opa = LV_OPA_COVER;
+    // NOTE: no border here — lv_draw_rect_dsc border strokes the polygon's bounding
+    // box (under a mask), not the shape edges. Outline is drawn explicitly per-shape
+    // (see draw_diamond) for the themes that need it.
+}
+
+// Firefox: simple heading-rotated chevron/arrowhead.
+static void draw_chevron(lv_draw_ctx_t *d, const AcDraw &ac) {
+    lv_point_t pts[3] = { blip_rot(ac, 0, -11), blip_rot(ac, 9, 9), blip_rot(ac, -9, 9) };
+    lv_draw_rect_dsc_t g;
+    blip_fill_dsc(g, ac);
+    lv_draw_polygon(d, &g, pts, 3);
+}
+
+// Top Gun: heading-rotated plane silhouette, drawn as THREE separate CONVEX polygons
+// (fuselage + wings + tailplane). LVGL v8 lv_draw_polygon only handles convex shapes;
+// a single concave 14-point outline would infinite-loop the renderer (watchdog reset).
+static void draw_silhouette(lv_draw_ctx_t *d, const AcDraw &ac) {
+    lv_draw_rect_dsc_t g;
+    blip_fill_dsc(g, ac);
+    // fuselage (convex hexagon, nose to tail)
+    lv_point_t body[6] = { blip_rot(ac, 0, -13), blip_rot(ac, 1.5f, -2), blip_rot(ac, 1.5f, 10),
+                           blip_rot(ac, 0, 12),   blip_rot(ac, -1.5f, 10), blip_rot(ac, -1.5f, -2) };
+    lv_draw_polygon(d, &g, body, 6);
+    // wings (convex swept quad)
+    lv_point_t wing[4] = { blip_rot(ac, 11, 4), blip_rot(ac, 12, 6), blip_rot(ac, -12, 6), blip_rot(ac, -11, 4) };
+    lv_draw_polygon(d, &g, wing, 4);
+    // tailplane (convex quad near tail)
+    lv_point_t tail[4] = { blip_rot(ac, 5, 10), blip_rot(ac, 5, 12), blip_rot(ac, -5, 12), blip_rot(ac, -5, 10) };
+    lv_draw_polygon(d, &g, tail, 4);
+}
+
+// Borderlands: axis-aligned diamond (not heading-rotated) with cel-shade outline.
+static void draw_diamond(lv_draw_ctx_t *d, const AcDraw &ac) {
+    const lv_coord_t x = ac.pos.x, y = ac.pos.y, r = 9;
+    lv_point_t pts[4] = { {x, (lv_coord_t)(y - r)}, {(lv_coord_t)(x + r), y},
+                          {x, (lv_coord_t)(y + r)}, {(lv_coord_t)(x - r), y} };
+    lv_draw_rect_dsc_t g;
+    blip_fill_dsc(g, ac);
+    lv_draw_polygon(d, &g, pts, 4);
+    if (s_desc->outline) {   // stroke the 4 edges explicitly (polygon dsc can't outline the shape)
+        lv_draw_line_dsc_t ol;
+        lv_draw_line_dsc_init(&ol);
+        ol.color = lv_color_black();
+        ol.width = 2;
+        ol.opa = LV_OPA_COVER;
+        for (int i = 0; i < 4; ++i) {
+            lv_point_t seg[2] = { pts[i], pts[(i + 1) % 4] };
+            lv_draw_line(d, &ol, &seg[0], &seg[1]);
+        }
+    }
+}
+
 static void ac_draw_cb(lv_event_t *e) {
     lv_draw_ctx_t *d = lv_event_get_draw_ctx(e);
     const bool drg = orb();
@@ -557,24 +627,29 @@ static void ac_draw_cb(lv_event_t *e) {
         } else {
             if (!ac.inRange) continue;            // phosphor/vector show in-range traffic only
             draw_trail(d, ac, ac.color);
-            if (vec) {
-                draw_bracket(d, ac);
-            } else {
-                const float th = ((ac.track != ac.track) ? 0.0f : ac.track) * (float)M_PI / 180.0f;
-                const float c = cosf(th), s = sinf(th);
-                lv_point_t pts[4];
-                for (int i = 0; i < 4; ++i) {
-                    const float x = GX[i] * c - GY[i] * s;
-                    const float y = GX[i] * s + GY[i] * c;
-                    pts[i].x = (lv_coord_t)(ac.pos.x + (lv_coord_t)lroundf(x));
-                    pts[i].y = (lv_coord_t)(ac.pos.y + (lv_coord_t)lroundf(y));
+            const radar::BlipShape sh = s_desc->shape;
+            if (sh == radar::BlipShape::kAuto) {
+                if (vec) {
+                    draw_bracket(d, ac);
+                } else {
+                    const float th = ((ac.track != ac.track) ? 0.0f : ac.track) * (float)M_PI / 180.0f;
+                    const float c = cosf(th), s = sinf(th);
+                    lv_point_t pts[4];
+                    for (int i = 0; i < 4; ++i) {
+                        const float x = GX[i] * c - GY[i] * s;
+                        const float y = GX[i] * s + GY[i] * c;
+                        pts[i].x = (lv_coord_t)(ac.pos.x + (lv_coord_t)lroundf(x));
+                        pts[i].y = (lv_coord_t)(ac.pos.y + (lv_coord_t)lroundf(y));
+                    }
+                    lv_draw_rect_dsc_t g;
+                    lv_draw_rect_dsc_init(&g);
+                    g.bg_color = ac.color;
+                    g.bg_opa = LV_OPA_COVER;
+                    lv_draw_polygon(d, &g, pts, 4);
                 }
-                lv_draw_rect_dsc_t g;
-                lv_draw_rect_dsc_init(&g);
-                g.bg_color = ac.color;
-                g.bg_opa = LV_OPA_COVER;
-                lv_draw_polygon(d, &g, pts, 4);
-            }
+            } else if (sh == radar::BlipShape::kChevron)    { draw_chevron(d, ac); }
+              else if (sh == radar::BlipShape::kSilhouette) { draw_silhouette(d, ac); }
+              else if (sh == radar::BlipShape::kDiamond)    { draw_diamond(d, ac); }
             if (ac.emergency) {
                 lv_draw_arc_dsc_t h;
                 lv_draw_arc_dsc_init(&h);
