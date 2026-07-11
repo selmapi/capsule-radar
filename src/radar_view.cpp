@@ -221,8 +221,8 @@ static void grid_draw_cb(lv_event_t *e) {
     }
 
     if (scopeStyle() == radar::ScopeStyle::kVector) {
-        // (a) natural-color map (NOT s_desc->layer — CIC's layer is green; we want a real map)
-        coastline_draw(d, lv_color_hex(s_desc->layer), 150, 2);     // water/coast blue
+        // (a) natural-color map, tinted per theme via s_desc->layer (blue for CIC/ClaudeIC, dim gray for Firefox)
+        coastline_draw(d, lv_color_hex(s_desc->layer), 150, 2);
         if (s_airportsEnabled) airports_draw(d, lv_color_hex(0x8A93A6), 140);  // muted gray
 
         // (b) square grid (like orb, but chrome-colored, faint)
@@ -726,7 +726,7 @@ namespace radar {
 
 void setTheme(int t) {
     // Clamp to a valid theme index for any input (negative, >= count). THEME_COUNT
-    // (radar_view.h) must equal kThemeCount (theme_table.cpp) — both are 10.
+    // (radar_view.h) must equal kThemeCount (theme_table.cpp) — both are 15.
     s_theme = ((t % THEME_COUNT) + THEME_COUNT) % THEME_COUNT;
     s_desc  = &radar::kThemes[s_theme];
     const bool drg = (s_desc->scope == radar::ScopeStyle::kGrid);

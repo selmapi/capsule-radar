@@ -1,4 +1,5 @@
 #include "theme_table.h"
+#include "radar_view.h"   // for THEME_COUNT
 namespace radar {
 const ThemeDesc kThemes[] = {
   // 0 Phosphor (stock green + sweep)
@@ -33,4 +34,6 @@ const ThemeDesc kThemes[] = {
   {"Firefox", 0xFF8A2E,0xFFB454,0xFFB454,0xFF8A2E, 0x000000,0x6A5A4A, ScopeStyle::kVector, BlipMode::kMono,0xFF2A1A, Decoration::kNone,false, BlipShape::kChevron,false},
 };
 const int kThemeCount = (int)(sizeof(kThemes)/sizeof(kThemes[0]));
+static_assert((int)(sizeof(kThemes) / sizeof(kThemes[0])) == THEME_COUNT,
+              "kThemes[] row count must equal THEME_COUNT (radar_view.h)");
 }  // namespace radar
