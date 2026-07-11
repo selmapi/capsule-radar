@@ -222,7 +222,7 @@ static void grid_draw_cb(lv_event_t *e) {
 
     if (scopeStyle() == radar::ScopeStyle::kVector) {
         // (a) natural-color map (NOT s_desc->layer — CIC's layer is green; we want a real map)
-        coastline_draw(d, lv_color_hex(0x4E86C6), 150, 2);     // water/coast blue
+        coastline_draw(d, lv_color_hex(s_desc->layer), 150, 2);     // water/coast blue
         if (s_airportsEnabled) airports_draw(d, lv_color_hex(0x8A93A6), 140);  // muted gray
 
         // (b) square grid (like orb, but chrome-colored, faint)
