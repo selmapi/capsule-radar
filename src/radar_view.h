@@ -2,6 +2,7 @@
 // Scope rendering API (M1 scope, M2 aircraft, M3 selection). See docs/ARCHITECTURE.md.
 // Visual reference: assets/plane_radar_2.0_mockup.html
 #include <vector>
+#include <lvgl.h>
 #include "aircraft.h"
 
 struct RadarSettings {
@@ -61,6 +62,7 @@ void tickSweep();
 void setTheme(int theme);
 int  theme();
 void cycleTheme();
+lv_color_t chromeColor();                        // active theme's primary/rings color (chrome tint)
 void setThemeChangedCb(void (*cb)(int theme));   // called when the theme changes (for persistence)
 void setRangeLabelVisible(bool v);               // hide the built-in range label (UI shows its own)
 void setSweepEnabled(bool on);                   // show/hide the rotating sweep line

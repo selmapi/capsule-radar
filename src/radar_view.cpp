@@ -772,6 +772,7 @@ void setTheme(int t) {
 
 int  theme() { return s_theme; }
 void cycleTheme() { setTheme(s_theme + 1); }
+lv_color_t chromeColor() { return s_cRing; }
 void setThemeChangedCb(void (*cb)(int)) { s_themeCb = cb; }
 void setRangeLabelVisible(bool v) { s_rangeLblVisible = v; if (s_rangeLbl) show(s_rangeLbl, v && !orb()); }
 

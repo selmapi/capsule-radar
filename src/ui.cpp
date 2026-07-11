@@ -208,6 +208,14 @@ void ui_set_range_km(float km) {
     s_rangeIdx = best;
 }
 
+// Re-tint the zoom/range box to the active theme's chrome color. Safe to call before the
+// UI exists (e.g. from a theme-changed callback that could in principle fire early) since
+// s_zoomBtn/s_zoomLbl are null until ui_create() runs.
+void ui_apply_theme_accent(lv_color_t c) {
+    if (s_zoomBtn) lv_obj_set_style_border_color(s_zoomBtn, c, 0);
+    if (s_zoomLbl) lv_obj_set_style_text_color(s_zoomLbl, c, 0);
+}
+
 static void radar_press_cb(lv_event_t *e) { (void)e; s_longPressed = false; }
 
 static void radar_longpress_cb(lv_event_t *e) {   // long-press cycles the visual theme

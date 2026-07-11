@@ -250,6 +250,7 @@ static void saveTheme(int t) {
     p.begin("capsuleradar", false);
     p.putInt("theme", t);
     p.end();
+    ui_apply_theme_accent(radar::chromeColor());   // re-tint the zoom/range box to match
 }
 
 // Convert a UTC broken-down time to time_t (mktime assumes local TZ, so flip to UTC0).
@@ -812,6 +813,7 @@ void setup() {
         g_rotation = p.getInt("rot", 0);
         p.end();
         radar::setTheme(t);
+        ui_apply_theme_accent(radar::chromeColor());   // zoom/range box matches the restored theme at boot
         radar::setSweepEnabled(g_showSweep);
         radar::setAirportsEnabled(g_showAirports);
         g_adsb.setHideGround(g_hideGround);

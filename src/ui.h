@@ -1,6 +1,7 @@
 #pragma once
 // M3 UI: swipeable views (radar / list / stats) + tap-to-inspect detail card.
 // Pure LVGL, portable (device + SDL simulator). Builds on top of radar_view.
+#include <lvgl.h>
 void ui_create(void);            // build the whole UI on the active screen
 void ui_on_data_updated(void);   // refresh card/list/stats after radar::update()
 void ui_show_view(int idx);      // 0 = radar, 1 = list, 2 = stats
@@ -13,3 +14,4 @@ void ui_splash_show(void);  // branded boot splash (auto-fades, covers init time
 void ui_set_range_cb(void (*cb)(float km));  // on-screen zoom button -> notify main
 void ui_set_range_km(float km);              // update the zoom button label / sync the cycle
 void ui_set_units(int preset);               // 0 = Aviation (ft,kt,km) · 1 = Metric (m,km/h,km) · 2 = Imperial (ft,mph,mi)
+void ui_apply_theme_accent(lv_color_t c);    // re-tint the zoom/range box to the active theme's chrome color
