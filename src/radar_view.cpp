@@ -765,6 +765,11 @@ void setTheme(int t) {
     if (s_pulse)     lv_obj_set_style_border_color(s_pulse, s_cInk, 0);
     if (s_rangeLbl)  lv_obj_set_style_text_color(s_rangeLbl, s_cRing, 0);
 
+    // Recolor already-drawn blips for the new palette; otherwise each AcDraw keeps its
+    // cached color (set at poll time in update()) until the next ADS-B poll (~seconds).
+    for (AcDraw &ac : s_acs) ac.color = alt_color(ac.altFt, ac.onGround);
+    if (s_acLayer) lv_obj_invalidate(s_acLayer);
+
     flow_redraw_all();
     if (s_parent) lv_obj_invalidate(s_parent);
     if (s_themeCb) s_themeCb(s_theme);
