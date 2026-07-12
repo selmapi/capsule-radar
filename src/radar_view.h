@@ -72,6 +72,7 @@ bool airportsEnabled();
 void setTrailLength(int level);                  // 0=off 1=short 2=medium 3=long (aircraft trails + flow)
 void setMaxOnScreen(int n);                       // how many (nearest) aircraft to draw on the scope
 void flashRefresh();                              // brief on-screen confirmation for shake-to-refresh
+void flashAlert();                                // full-screen red flash for alert conditions
 
 // Drop all accumulated trails + the persistent flow layer and force a clean repaint.
 // Call after a display::setRotation(): the flow canvas is a persistent bitmap that
