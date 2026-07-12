@@ -19,9 +19,9 @@ const ThemeDesc kThemes[] = {
   // 7 Mission Control (navy/gold + starfield)
   {"Mission Control", 0xD4A544,0xD4A544,0xE8E2CE,0xB8C8E8, 0x081228,0x6A84B0, ScopeStyle::kRings, BlipMode::kAltRamp,0, Decoration::kStarfield,false, BlipShape::kAuto, false, FX_ALTSIZE},
   // 8 CIC (green vector scope, amber mono targets, no sweep)
-  {"CIC", 0x2AAB5A,0x5AFF8A,0x5AFF8A,0x2AAB5A, 0x000000,0x4E86C6, ScopeStyle::kVector, BlipMode::kMono,0xFFB428, Decoration::kNone,false, BlipShape::kAuto, false, FX_LEADER | FX_VECTOR},
+  {"CIC", 0x2AAB5A,0x5AFF8A,0x5AFF8A,0x2AAB5A, 0x000000,0x4E86C6, ScopeStyle::kVector, BlipMode::kMono,0xFFB428, Decoration::kNone,false, BlipShape::kAuto, false, FX_LEADER},
   // 9 ClaudeIC (CIC geometry in Claude's palette; mascot added later)
-  {"ClaudeIC", 0xCC785C,0xE8825A,0xF0EEE6,0xC9C4B8, 0x14100E,0x4E86C6, ScopeStyle::kVector, BlipMode::kMono,0xE8825A, Decoration::kNone,false, BlipShape::kAuto, false, FX_LEADER | FX_VECTOR},
+  {"ClaudeIC", 0xCC785C,0xE8825A,0xF0EEE6,0xC9C4B8, 0x14100E,0x4E86C6, ScopeStyle::kVector, BlipMode::kMono,0xE8825A, Decoration::kNone,false, BlipShape::kAuto, false, FX_LEADER},
   // 10 Borderlands (cel-shaded diamonds, no sweep)
   {"Borderlands", 0xAEC9DB,0xFF9A2E,0xEAF2F8,0xAEC9DB, 0x16212B,0x4E7A9E, ScopeStyle::kRings, BlipMode::kMono,0xE5342A, Decoration::kNone,false, BlipShape::kDiamond,true, 0},
   // 11 Aliens (motion tracker; mono lime + sweep)
