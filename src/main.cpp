@@ -223,12 +223,12 @@ static void checkAudioEvents() {
         // proximity: fire once, when an aircraft first crosses into the radius (any aircraft)
         if (g_proximityKm > 0.0f && d <= g_proximityKm) {
             nowProx.insert(hex);
-            if (!first && !seenProx.count(hex)) audio_play(AUDIO_ALERT);
+            if (!first && !seenProx.count(hex)) audio_play(AUDIO_EMERGENCY);
         }
 
         // new-in-range pings (on entry), gated by the alert mode
         if (isNew) {
-            if (emergency) { if (g_alertMode >= 1) audio_play(AUDIO_ALERT); }   // emergencies only / +new
+            if (emergency) { if (g_alertMode >= 1) audio_play(AUDIO_EMERGENCY); }   // emergencies only / +new
             else if (g_alertMode >= 2 && millis() - lastNew > 3000) {
                 audio_play(AUDIO_NEW);                                          // new contact (rate-limited)
                 lastNew = millis();

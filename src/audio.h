@@ -7,8 +7,11 @@
 #include <stdbool.h>
 
 enum AudioCue {
-    AUDIO_NEW   = 0,   // new aircraft entered range (soft single beep)
-    AUDIO_ALERT = 1,   // emergency / military contact (urgent double beep)
+    AUDIO_NEW          = 0,   // new aircraft: soft ping
+    AUDIO_EMERGENCY    = 1,   // 7500/7600/7700: klaxon (was AUDIO_ALERT)
+    AUDIO_MILITARY     = 2,   // military contact: low descending
+    AUDIO_INBOUND      = 3,   // closest/inbound: sonar ping
+    AUDIO_ME_EMERGENCY = 4,   // Mass Effect theme emergency: detuned menace horn
 };
 
 bool audio_begin();                 // init ES8311 + I2S + PA + playback task (call on core 1)

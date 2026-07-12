@@ -25,6 +25,10 @@ static volatile bool s_muted = false;
 static volatile int  s_cue = -1;
 static SemaphoreHandle_t s_sem = nullptr;
 
+// self-test sentinel: kept out of the AudioCue enum range so it can't collide with a
+// real cue value (AUDIO_MILITARY == 2 used to be the self-test's magic number).
+static const int CUE_SELFTEST = 100;
+
 static void es_write(uint8_t reg, uint8_t val) {
     Wire.beginTransmission(ES8311_ADDR);
     Wire.write(reg);
@@ -146,26 +150,59 @@ static size_t gen_beep(int16_t *buf, size_t cap, float freq, int ms, float amp) 
     return i * 2;                                  // samples written (stereo interleaved)
 }
 
+// Two detuned sines summed -> a beating drone (menace). Same anti-click fade as gen_beep.
+static size_t gen_beep2(int16_t *buf, size_t cap, float f1, float f2, int ms, float amp) {
+    size_t n = (size_t)((int64_t)SR * ms / 1000); if (n * 2 > cap) n = cap / 2;
+    const size_t fade = SR / 200;
+    size_t i = 0;
+    for (; i < n; ++i) {
+        float env = 1.0f;
+        if (i < fade) env = (float)i / fade;
+        else if (i > n - fade) env = (float)(n - i) / fade;
+        float s = 0.5f * (sinf(2.0f*(float)M_PI*f1*i/SR) + sinf(2.0f*(float)M_PI*f2*i/SR));
+        int16_t v = (int16_t)(amp * env * s);
+        buf[i*2] = v; buf[i*2+1] = v;
+    }
+    return i * 2;
+}
+
+struct Note { float freq; int ms; int gapMs; };
+static void play_notes(int16_t *buf, float amp, const Note *notes, int count) {
+    size_t bw;
+    for (int k = 0; k < count; ++k) {
+        size_t ns = gen_beep(buf, S_BUF_LEN, notes[k].freq, notes[k].ms, amp);
+        i2s_write(I2S_PORT, buf, ns * 2, &bw, portMAX_DELAY);
+        if (notes[k].gapMs) delay(notes[k].gapMs);
+    }
+}
+
 static void play_cue(int cue) {
-    if (!s_ok || !s_buf || (s_muted && cue != 2) || s_vol <= 0) return;
+    if (!s_ok || !s_buf || (s_muted && cue != CUE_SELFTEST) || s_vol <= 0) return;
     int16_t *buf = s_buf;
     const float amp = (s_vol / 100.0f) * 17000.0f;
     digitalWrite(PIN_AUDIO_PA, HIGH);              // enable speaker amp
     delay(8);                                      // let the amp power up
-    size_t bw;
-    if (cue == 2) {                                // self-test: ~2 s continuous tone, PA held
-        size_t ns = gen_beep(buf, S_BUF_LEN, 1000.0f, 480, amp);
-        for (int k = 0; k < 4; ++k) i2s_write(I2S_PORT, buf, ns * 2, &bw, portMAX_DELAY);
-    } else if (cue == AUDIO_ALERT) {
-        for (int k = 0; k < 2; ++k) {
-            size_t ns = gen_beep(buf, S_BUF_LEN, 1320.0f, 80, amp);
-            i2s_write(I2S_PORT, buf, ns * 2, &bw, portMAX_DELAY);
-            delay(40);
-        }
-    } else {
-        size_t ns = gen_beep(buf, S_BUF_LEN, 880.0f, 160, amp);
-        i2s_write(I2S_PORT, buf, ns * 2, &bw, portMAX_DELAY);
+
+    switch (cue) {
+        case AUDIO_NEW:        { static const Note s[]={{880,150,0}};                       play_notes(buf, amp*0.7f, s, 1); } break;
+        case AUDIO_INBOUND:    { static const Note s[]={{560,170,0}};                       play_notes(buf, amp, s, 1); } break;
+        case AUDIO_MILITARY:   { static const Note s[]={{440,90,20},{330,130,0}};           play_notes(buf, amp, s, 2); } break;
+        case AUDIO_EMERGENCY:  { static const Note s[]={{760,150,25},{560,150,25},{760,150,25},{560,150,0}}; play_notes(buf, amp, s, 4); } break;
+        case AUDIO_ME_EMERGENCY: {
+            size_t bw;
+            for (int rep=0; rep<2; ++rep) {
+                size_t ns = gen_beep2(buf, S_BUF_LEN, 185.0f, 196.0f, 500, amp);
+                i2s_write(I2S_PORT, buf, ns*2, &bw, portMAX_DELAY);
+                delay(60);
+            }
+        } break;
+        case CUE_SELFTEST: {   // ~2 s continuous tone (as before)
+            size_t ns = gen_beep(buf, S_BUF_LEN, 1000.0f, 480, amp);
+            size_t bw; for (int k=0;k<4;++k) i2s_write(I2S_PORT, buf, ns*2, &bw, portMAX_DELAY);
+        } break;
+        default:               { static const Note s[]={{880,160,0}};                       play_notes(buf, amp, s, 1); } break;
     }
+
     delay(90);                                     // let the DMA clock the tail out before cutting the amp
     digitalWrite(PIN_AUDIO_PA, LOW);               // mute amp between pings (saves power, kills hiss)
 }
@@ -223,6 +260,6 @@ void audio_play(AudioCue cue) {
 
 void audio_selftest() {   // ~2 s continuous tone, ignores mute, PA held on
     if (!s_ok) return;
-    s_cue = 2;
+    s_cue = CUE_SELFTEST;
     if (s_sem) xSemaphoreGive(s_sem);
 }
