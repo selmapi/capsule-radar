@@ -9,6 +9,7 @@
 #define QMI_CTRL1   0x02   // serial interface / addr auto-increment
 #define QMI_CTRL2   0x03   // accel: full-scale + ODR
 #define QMI_CTRL7   0x08   // sensor enable
+#define QMI_AX_L    0x35   // accel X low byte; X/Y/Z are 6 consecutive LE int16s (auto-increment on)
 #define QMI_AZ_L    0x39   // accel Z low byte (high byte at 0x3A)
 
 // ±2g full scale -> 16384 LSB/g.
@@ -71,4 +72,16 @@ int imu_facedown() {
     const bool down = (ref < 0) ? (az > FACEDOWN_THRESHOLD) : (az < -FACEDOWN_THRESHOLD);
     if (!down) ref += (az - ref) >> 4;   // EMA toward the current (not-face-down) orientation
     return down ? 1 : 0;
+}
+
+// Full accel vector, g units (±2 g full scale -> 16384 LSB/g). false on I2C read failure.
+bool imu_read_accel(float *ax, float *ay, float *az) {
+    if (!s_ok) return false;
+    uint8_t b[6];
+    if (!rd(QMI_AX_L, b, 6)) return false;   // AX_L..AZ_H (auto-increment)
+    const int16_t rx = (int16_t)((b[1] << 8) | b[0]);
+    const int16_t ry = (int16_t)((b[3] << 8) | b[2]);
+    const int16_t rz = (int16_t)((b[5] << 8) | b[4]);
+    *ax = rx / 16384.0f; *ay = ry / 16384.0f; *az = rz / 16384.0f;
+    return true;
 }
