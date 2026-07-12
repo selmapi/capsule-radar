@@ -135,6 +135,10 @@ static const float GY[4] = { -11.0f, 5.0f, 8.0f, 5.0f };
 constexpr uint32_t FADEIN_MS = 900;
 constexpr float ALTSIZE_LO = 1.35f, ALTSIZE_HI = 0.75f, ALTSIZE_CEIL_FT = 40000.0f;
 
+// new-contact pulse / heading-vector / ATC leader-line FX (feature/blip-fx)
+constexpr uint32_t PULSE_MS = 900;
+constexpr float VEC_SCALE = 0.052f, VEC_MIN = 6.0f, VEC_MAX = 30.0f, VEC_MIN_KT = 40.0f;
+
 static inline radar::ScopeStyle scopeStyle() { return s_desc->scope; }
 static inline bool orb() { return scopeStyle() == radar::ScopeStyle::kGrid; }  // thin alias; existing call sites keep working
 
@@ -406,6 +410,22 @@ static void interp_step(void) {
 static void sweep_timer_cb(lv_timer_t *t) {
     (void)t;
     if (++s_frameCtr % 3 == 0) interp_step();         // smooth glyph motion (~90 ms cadence)
+    // Keep a new/pulsing/emergency contact animating on ALL non-orb themes every tick,
+    // even when the sweep is off and the glyph is stationary — otherwise the 900ms
+    // fade-in + pulse ring are never redrawn between polls and just snap to full.
+    // Runs regardless of MOTION_INTERP (interp_step is compiled out without it) and only
+    // touches contacts actually animating, so a steady scene costs ~nothing.
+    if (!orb() && s_acLayer) {
+        for (const AcDraw &ac : s_acs) {
+            if (!ac.inRange) continue;
+            const uint32_t age = lv_tick_get() - ac.firstSeenMs;
+            if (age < PULSE_MS || ac.emergency) {       // fading in, pulsing, or emergency-ring
+                lv_area_t a = { (lv_coord_t)(ac.pos.x - 30), (lv_coord_t)(ac.pos.y - 30),
+                                (lv_coord_t)(ac.pos.x + 30), (lv_coord_t)(ac.pos.y + 30) };
+                lv_obj_invalidate_area(s_acLayer, &a);
+            }
+        }
+    }
     if (orb()) {
         // animate the blip waves (invalidate only the ball areas)
         s_wavePhase += 0.05f;
@@ -637,7 +657,8 @@ static void ac_draw_cb(lv_event_t *e) {
         // high altitude draws smaller. All other themes keep scale == 1.0f.
         float scale = 1.0f;
         if (s_desc->blipFx & radar::FX_ALTSIZE) {
-            float t = ac.altFt / ALTSIZE_CEIL_FT;
+            // ac.altFt is NaN on the ground; NaN fails both clamps, so guard it -> low -> big
+            float t = (ac.onGround || ac.altFt != ac.altFt) ? 0.0f : ac.altFt / ALTSIZE_CEIL_FT;
             if (t < 0) t = 0;
             if (t > 1) t = 1;
             scale = ALTSIZE_LO + (ALTSIZE_HI - ALTSIZE_LO) * t;
@@ -657,6 +678,23 @@ static void ac_draw_cb(lv_event_t *e) {
         } else {
             if (!ac.inRange) continue;            // phosphor/vector show in-range traffic only
             draw_trail(d, ac, ac.color);
+
+            // one-shot expanding ring when a contact first appears (all non-orb themes)
+            if (age < PULSE_MS) {
+                lv_draw_arc_dsc_t pr; lv_draw_arc_dsc_init(&pr);
+                pr.color = ac.color; pr.width = 2;
+                pr.opa = (lv_opa_t)(200u - 200u * age / PULSE_MS);
+                uint16_t r = (uint16_t)(4.0f + 18.0f * age / (float)PULSE_MS);
+                lv_draw_arc(d, &pr, &ac.pos, r, 0, 360);
+            }
+            // repeating red ring while squawking emergency (augments the static halo below)
+            if (ac.emergency) {
+                float p = (float)(s_frameCtr % 30) / 30.0f;
+                lv_draw_arc_dsc_t er; lv_draw_arc_dsc_init(&er);
+                er.color = COL_EMERG; er.width = 2;
+                er.opa = (lv_opa_t)((1.0f - p) * 220.0f);
+                lv_draw_arc(d, &er, &ac.pos, (uint16_t)(6.0f + 22.0f * p), 0, 360);
+            }
 
             const radar::BlipShape sh = s_desc->shape;
             if (sh == radar::BlipShape::kAuto) {
@@ -679,6 +717,19 @@ static void ac_draw_cb(lv_event_t *e) {
             } else if (sh == radar::BlipShape::kChevron)    { draw_chevron(d, ac, opa, scale); }
               else if (sh == radar::BlipShape::kSilhouette) { draw_silhouette(d, ac, opa, scale); }
               else if (sh == radar::BlipShape::kDiamond)    { draw_diamond(d, ac, opa, scale); }
+
+            // heading-vector: forward speed line (Military/CIC/ClaudeIC only)
+            if ((s_desc->blipFx & radar::FX_VECTOR) && !ac.onGround && ac.gsKt >= VEC_MIN_KT) {
+                float len = ac.gsKt * VEC_SCALE;
+                if (len < VEC_MIN) len = VEC_MIN;
+                if (len > VEC_MAX) len = VEC_MAX;
+                lv_point_t tip = blip_rot(ac, 0.0f, -len);   // forward along heading
+                lv_draw_line_dsc_t vl; lv_draw_line_dsc_init(&vl);
+                vl.color = ac.color; vl.width = 2; vl.opa = opa;   // fade with the blip
+                lv_point_t seg[2] = { ac.pos, tip };
+                lv_draw_line(d, &vl, &seg[0], &seg[1]);
+            }
+
             if (ac.emergency) {
                 lv_draw_arc_dsc_t h;
                 lv_draw_arc_dsc_init(&h);
@@ -705,13 +756,26 @@ static void ac_draw_cb(lv_event_t *e) {
 
         // floating labels (phosphor only; orb keeps clean balls + the tap card)
         if (!drg) {
+            lv_area_t a1 = { (lv_coord_t)(ac.pos.x + 12), (lv_coord_t)(ac.pos.y - 14),
+                             (lv_coord_t)(ac.pos.x + 142), (lv_coord_t)(ac.pos.y + 2) };
+
+            // ATC leader line: thin connector from the blip to the label anchor, drawn
+            // before the labels so the text sits on top (Military/CIC/ClaudeIC only).
+            // Only when there's actually a callsign label to connect to.
+            if ((s_desc->blipFx & radar::FX_LEADER) && ac.call[0]) {
+                lv_draw_line_dsc_t ll; lv_draw_line_dsc_init(&ll);
+                ll.color = s_cSoft; ll.width = 1;
+                ll.opa = (lv_opa_t)((uint32_t)120 * opa / 255);   // dim, and fade with the blip
+                lv_point_t a = ac.pos, b = { a1.x1, a1.y1 };      // toward the label anchor
+                lv_point_t seg[2] = { a, b };
+                lv_draw_line(d, &ll, &seg[0], &seg[1]);
+            }
+
             lv_draw_label_dsc_t lc;
             lv_draw_label_dsc_init(&lc);
             lc.font = &lv_font_montserrat_14;
             lc.color = s_cInk;
             lc.opa = opa;
-            lv_area_t a1 = { (lv_coord_t)(ac.pos.x + 12), (lv_coord_t)(ac.pos.y - 14),
-                             (lv_coord_t)(ac.pos.x + 142), (lv_coord_t)(ac.pos.y + 2) };
             if (ac.call[0]) lv_draw_label(d, &lc, &a1, ac.call, NULL);
             lv_draw_label_dsc_t la;
             lv_draw_label_dsc_init(&la);
