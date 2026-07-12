@@ -205,38 +205,47 @@ static void loadSettings() {
 }
 
 // Audio alerts. g_alertMode: 0 = off, 1 = emergencies only, 2 = new aircraft + emergencies.
+// One cue per aircraft per poll, most-urgent wins: emergency onset (entry or starts squawking)
+// > military-on-entry > proximity-crossing (inbound) > new contact. Emergency onset fires
+// AUDIO_EMERGENCY (AUDIO_ME_EMERGENCY on the Mass Effect theme) plus a red screen flash,
+// gated by g_alertMode >= 1; military/inbound/new are gated by g_alertMode >= 2.
 // g_proximityKm > 0 also pings (once) when any aircraft crosses into that radius.
 static void checkAudioEvents() {
     if (!audio_present()) return;
-    static std::set<std::string> seen, seenProx;
+    static std::set<std::string> seen, seenProx, seenEmerg;
     static bool first = true;
     static uint32_t lastNew = 0;
-    std::set<std::string> now, nowProx;
+    std::set<std::string> now, nowProx, nowEmerg;
     for (const Aircraft &ac : g_snap) {
         const double d = geo::haversineKm(g_settings.homeLat, g_settings.homeLon, ac.lat, ac.lon);
         if (d > g_settings.rangeKm) continue;                 // in-range only
         const std::string hex = ac.hex.c_str();
         now.insert(hex);
-        const bool isNew     = !first && !seen.count(hex);
-        const bool emergency = acIsEmergency(ac.squawk) || ac.military;  // military: feed dbFlags
+        const bool isNew   = !first && !seen.count(hex);
+        const bool isEmerg = acIsEmergency(ac.squawk);
+        const bool isMil   = ac.military;
+        bool inProx = false;
+        if (g_proximityKm > 0.0f && d <= g_proximityKm) { inProx = true; nowProx.insert(hex); }
+        if (isEmerg) nowEmerg.insert(hex);
 
-        // proximity: fire once, when an aircraft first crosses into the radius (any aircraft)
-        if (g_proximityKm > 0.0f && d <= g_proximityKm) {
-            nowProx.insert(hex);
-            if (!first && !seenProx.count(hex)) audio_play(AUDIO_EMERGENCY);
-        }
+        const bool newEmerg = isEmerg && !first && !seenEmerg.count(hex);   // emergency onset (entry OR starts squawking)
+        const bool newProx  = inProx  && !first && !seenProx.count(hex);    // just crossed into the proximity radius
 
-        // new-in-range pings (on entry), gated by the alert mode
-        if (isNew) {
-            if (emergency) { if (g_alertMode >= 1) audio_play(AUDIO_EMERGENCY); }   // emergencies only / +new
-            else if (g_alertMode >= 2 && millis() - lastNew > 3000) {
-                audio_play(AUDIO_NEW);                                          // new contact (rate-limited)
-                lastNew = millis();
+        // one cue per aircraft, most-urgent wins
+        if (newEmerg) {
+            if (g_alertMode >= 1) {
+                audio_play(radar::theme() == THEME_MASSEFFECT ? AUDIO_ME_EMERGENCY : AUDIO_EMERGENCY);
+                radar::flashAlert();                          // red screen flash, all themes
             }
+        } else if (g_alertMode >= 2) {
+            if      (isNew && isMil)  audio_play(AUDIO_MILITARY);
+            else if (newProx)         audio_play(AUDIO_INBOUND);
+            else if (isNew && millis() - lastNew > 3000) { audio_play(AUDIO_NEW); lastNew = millis(); }
         }
     }
     seen.swap(now);
     seenProx.swap(nowProx);
+    seenEmerg.swap(nowEmerg);
     first = false;
 }
 
