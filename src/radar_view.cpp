@@ -121,10 +121,12 @@ struct AcDraw {
     bool       onGround;
     float      vsFpm, gsKt, distKm, bearingDeg;
     int        squawk;
+    uint32_t   firstSeenMs;      // lv_tick_get() when this hex was first observed (persists across polls; for fade-in/pulse)
     std::vector<lv_point_t> trail;
 };
 static std::vector<AcDraw> s_acs;
 static std::map<std::string, std::vector<lv_point_t>> s_trails;
+static std::map<std::string, uint32_t> s_firstSeen;   // hex -> first-seen tick, persistent across polls
 
 static const float GX[4] = { 0.0f,  7.0f, 0.0f, -7.0f };
 static const float GY[4] = { -11.0f, 5.0f, 8.0f, 5.0f };
@@ -1037,6 +1039,11 @@ void update(const std::vector<Aircraft> &aircraft, const RadarSettings &s) {
 
         const std::string key = ac.hex.c_str();
         present.insert(key);
+
+        auto fsIt = s_firstSeen.find(key);
+        if (fsIt == s_firstSeen.end()) fsIt = s_firstSeen.emplace(key, lv_tick_get()).first;
+        d.firstSeenMs = fsIt->second;
+
         if (d.inRange) {
             std::vector<lv_point_t> &hist = s_trails[key];
             const bool moved = hist.empty() ||
@@ -1063,6 +1070,10 @@ void update(const std::vector<Aircraft> &aircraft, const RadarSettings &s) {
 
     for (auto it = s_trails.begin(); it != s_trails.end();) {
         if (present.find(it->first) == present.end()) it = s_trails.erase(it);
+        else ++it;
+    }
+    for (auto it = s_firstSeen.begin(); it != s_firstSeen.end();) {
+        if (present.find(it->first) == present.end()) it = s_firstSeen.erase(it);
         else ++it;
     }
     if (!s_selHex.empty() && present.find(s_selHex) == present.end()) s_selHex.clear();
