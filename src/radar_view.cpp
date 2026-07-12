@@ -131,6 +131,10 @@ static std::map<std::string, uint32_t> s_firstSeen;   // hex -> first-seen tick,
 static const float GX[4] = { 0.0f,  7.0f, 0.0f, -7.0f };
 static const float GY[4] = { -11.0f, 5.0f, 8.0f, 5.0f };
 
+// blip fade-in / altitude-size FX (feature/blip-fx)
+constexpr uint32_t FADEIN_MS = 900;
+constexpr float ALTSIZE_LO = 1.35f, ALTSIZE_HI = 0.75f, ALTSIZE_CEIL_FT = 40000.0f;
+
 static inline radar::ScopeStyle scopeStyle() { return s_desc->scope; }
 static inline bool orb() { return scopeStyle() == radar::ScopeStyle::kGrid; }  // thin alias; existing call sites keep working
 
@@ -511,13 +515,14 @@ static void draw_offrange(lv_draw_ctx_t *d, const AcDraw &ac) {
 
 // CIC/ClaudeIC vector-scope target marker: a "[ ]" bracket pair (four L-shaped
 // corner marks) around the aircraft position, plus a small center dot.
-static void draw_bracket(lv_draw_ctx_t *d, const AcDraw &ac) {
+static void draw_bracket(lv_draw_ctx_t *d, const AcDraw &ac, lv_opa_t opa) {
     const lv_coord_t b = 9, len = 4;
     const lv_coord_t x = ac.pos.x, y = ac.pos.y;
     lv_draw_line_dsc_t bl;
     lv_draw_line_dsc_init(&bl);
     bl.color = ac.color;
     bl.width = 2;
+    bl.opa = opa;
     const lv_coord_t cx[4] = { (lv_coord_t)(x - b), (lv_coord_t)(x + b), (lv_coord_t)(x + b), (lv_coord_t)(x - b) };
     const lv_coord_t cy[4] = { (lv_coord_t)(y - b), (lv_coord_t)(y - b), (lv_coord_t)(y + b), (lv_coord_t)(y + b) };
     const lv_coord_t sx[4] = { 1, -1, -1, 1 };   // horizontal leg direction, per corner
@@ -533,7 +538,7 @@ static void draw_bracket(lv_draw_ctx_t *d, const AcDraw &ac) {
     lv_draw_rect_dsc_t dot;
     lv_draw_rect_dsc_init(&dot);
     dot.bg_color = ac.color;
-    dot.bg_opa = LV_OPA_COVER;
+    dot.bg_opa = opa;
     dot.radius = LV_RADIUS_CIRCLE;
     lv_area_t dr = { (lv_coord_t)(x - 1), (lv_coord_t)(y - 1), (lv_coord_t)(x + 1), (lv_coord_t)(y + 1) };
     lv_draw_rect(d, &dot, &dr);
@@ -553,48 +558,54 @@ static inline lv_point_t blip_rot(const AcDraw &ac, float lx, float ly) {
 
 // shared fill dsc for the shape helpers: ac.color fill, + black cel-shade border when
 // the active theme's s_desc->outline is set (Borderlands).
-static inline void blip_fill_dsc(lv_draw_rect_dsc_t &g, const AcDraw &ac) {
+static inline void blip_fill_dsc(lv_draw_rect_dsc_t &g, const AcDraw &ac, lv_opa_t opa) {
     lv_draw_rect_dsc_init(&g);
     g.bg_color = ac.color;
-    g.bg_opa = LV_OPA_COVER;
+    g.bg_opa = opa;
     // NOTE: no border here — lv_draw_rect_dsc border strokes the polygon's bounding
     // box (under a mask), not the shape edges. Outline is drawn explicitly per-shape
     // (see draw_diamond) for the themes that need it.
 }
 
 // Firefox: simple heading-rotated chevron/arrowhead.
-static void draw_chevron(lv_draw_ctx_t *d, const AcDraw &ac) {
-    lv_point_t pts[3] = { blip_rot(ac, 0, -11), blip_rot(ac, 9, 9), blip_rot(ac, -9, 9) };
+static void draw_chevron(lv_draw_ctx_t *d, const AcDraw &ac, lv_opa_t opa, float scale) {
+    lv_point_t pts[3] = { blip_rot(ac, 0 * scale, -11 * scale), blip_rot(ac, 9 * scale, 9 * scale),
+                          blip_rot(ac, -9 * scale, 9 * scale) };
     lv_draw_rect_dsc_t g;
-    blip_fill_dsc(g, ac);
+    blip_fill_dsc(g, ac, opa);
     lv_draw_polygon(d, &g, pts, 3);
 }
 
 // Top Gun: heading-rotated plane silhouette, drawn as THREE separate CONVEX polygons
 // (fuselage + wings + tailplane). LVGL v8 lv_draw_polygon only handles convex shapes;
 // a single concave 14-point outline would infinite-loop the renderer (watchdog reset).
-static void draw_silhouette(lv_draw_ctx_t *d, const AcDraw &ac) {
+static void draw_silhouette(lv_draw_ctx_t *d, const AcDraw &ac, lv_opa_t opa, float scale) {
     lv_draw_rect_dsc_t g;
-    blip_fill_dsc(g, ac);
+    blip_fill_dsc(g, ac, opa);
     // fuselage (convex hexagon, nose to tail)
-    lv_point_t body[6] = { blip_rot(ac, 0, -13), blip_rot(ac, 1.5f, -2), blip_rot(ac, 1.5f, 10),
-                           blip_rot(ac, 0, 12),   blip_rot(ac, -1.5f, 10), blip_rot(ac, -1.5f, -2) };
+    lv_point_t body[6] = { blip_rot(ac, 0 * scale, -13 * scale), blip_rot(ac, 1.5f * scale, -2 * scale),
+                           blip_rot(ac, 1.5f * scale, 10 * scale),
+                           blip_rot(ac, 0 * scale, 12 * scale),   blip_rot(ac, -1.5f * scale, 10 * scale),
+                           blip_rot(ac, -1.5f * scale, -2 * scale) };
     lv_draw_polygon(d, &g, body, 6);
     // wings (convex swept quad)
-    lv_point_t wing[4] = { blip_rot(ac, 11, 4), blip_rot(ac, 12, 6), blip_rot(ac, -12, 6), blip_rot(ac, -11, 4) };
+    lv_point_t wing[4] = { blip_rot(ac, 11 * scale, 4 * scale), blip_rot(ac, 12 * scale, 6 * scale),
+                           blip_rot(ac, -12 * scale, 6 * scale), blip_rot(ac, -11 * scale, 4 * scale) };
     lv_draw_polygon(d, &g, wing, 4);
     // tailplane (convex quad near tail)
-    lv_point_t tail[4] = { blip_rot(ac, 5, 10), blip_rot(ac, 5, 12), blip_rot(ac, -5, 12), blip_rot(ac, -5, 10) };
+    lv_point_t tail[4] = { blip_rot(ac, 5 * scale, 10 * scale), blip_rot(ac, 5 * scale, 12 * scale),
+                           blip_rot(ac, -5 * scale, 12 * scale), blip_rot(ac, -5 * scale, 10 * scale) };
     lv_draw_polygon(d, &g, tail, 4);
 }
 
 // Borderlands: axis-aligned diamond (not heading-rotated) with cel-shade outline.
-static void draw_diamond(lv_draw_ctx_t *d, const AcDraw &ac) {
-    const lv_coord_t x = ac.pos.x, y = ac.pos.y, r = 9;
+static void draw_diamond(lv_draw_ctx_t *d, const AcDraw &ac, lv_opa_t opa, float scale) {
+    const lv_coord_t x = ac.pos.x, y = ac.pos.y;
+    const lv_coord_t r = (lv_coord_t)lroundf(9.0f * scale);
     lv_point_t pts[4] = { {x, (lv_coord_t)(y - r)}, {(lv_coord_t)(x + r), y},
                           {x, (lv_coord_t)(y + r)}, {(lv_coord_t)(x - r), y} };
     lv_draw_rect_dsc_t g;
-    blip_fill_dsc(g, ac);
+    blip_fill_dsc(g, ac, opa);
     lv_draw_polygon(d, &g, pts, 4);
     if (s_desc->outline) {   // stroke the 4 edges explicitly (polygon dsc can't outline the shape)
         lv_draw_line_dsc_t ol;
@@ -616,6 +627,22 @@ static void ac_draw_cb(lv_event_t *e) {
     int balls = 0, arrows = 0;
 
     for (const AcDraw &ac : s_acs) {
+        // fade-in: a just-appeared aircraft ramps opacity 0->full over FADEIN_MS, then
+        // stays solid. Computed once per aircraft so it can be threaded into the shape
+        // draw AND the floating labels below, keeping the whole blip fading as one.
+        const uint32_t age = lv_tick_get() - ac.firstSeenMs;
+        const lv_opa_t opa = (age >= FADEIN_MS) ? LV_OPA_COVER
+                                                 : (lv_opa_t)((uint32_t)255 * age / FADEIN_MS);
+        // altitude-size: Mission Control only (FX_ALTSIZE) — low altitude draws bigger,
+        // high altitude draws smaller. All other themes keep scale == 1.0f.
+        float scale = 1.0f;
+        if (s_desc->blipFx & radar::FX_ALTSIZE) {
+            float t = ac.altFt / ALTSIZE_CEIL_FT;
+            if (t < 0) t = 0;
+            if (t > 1) t = 1;
+            scale = ALTSIZE_LO + (ALTSIZE_HI - ALTSIZE_LO) * t;
+        }
+
         if (drg) {
             if (ac.inRange) {
                 if (balls >= ORB_BLIPS) continue;   // up to 7 in-range balls
@@ -630,29 +657,28 @@ static void ac_draw_cb(lv_event_t *e) {
         } else {
             if (!ac.inRange) continue;            // phosphor/vector show in-range traffic only
             draw_trail(d, ac, ac.color);
+
             const radar::BlipShape sh = s_desc->shape;
             if (sh == radar::BlipShape::kAuto) {
                 if (vec) {
-                    draw_bracket(d, ac);
+                    draw_bracket(d, ac, opa);
                 } else {
                     const float th = ((ac.track != ac.track) ? 0.0f : ac.track) * (float)M_PI / 180.0f;
                     const float c = cosf(th), s = sinf(th);
                     lv_point_t pts[4];
                     for (int i = 0; i < 4; ++i) {
-                        const float x = GX[i] * c - GY[i] * s;
-                        const float y = GX[i] * s + GY[i] * c;
+                        const float x = (GX[i] * scale) * c - (GY[i] * scale) * s;
+                        const float y = (GX[i] * scale) * s + (GY[i] * scale) * c;
                         pts[i].x = (lv_coord_t)(ac.pos.x + (lv_coord_t)lroundf(x));
                         pts[i].y = (lv_coord_t)(ac.pos.y + (lv_coord_t)lroundf(y));
                     }
                     lv_draw_rect_dsc_t g;
-                    lv_draw_rect_dsc_init(&g);
-                    g.bg_color = ac.color;
-                    g.bg_opa = LV_OPA_COVER;
+                    blip_fill_dsc(g, ac, opa);
                     lv_draw_polygon(d, &g, pts, 4);
                 }
-            } else if (sh == radar::BlipShape::kChevron)    { draw_chevron(d, ac); }
-              else if (sh == radar::BlipShape::kSilhouette) { draw_silhouette(d, ac); }
-              else if (sh == radar::BlipShape::kDiamond)    { draw_diamond(d, ac); }
+            } else if (sh == radar::BlipShape::kChevron)    { draw_chevron(d, ac, opa, scale); }
+              else if (sh == radar::BlipShape::kSilhouette) { draw_silhouette(d, ac, opa, scale); }
+              else if (sh == radar::BlipShape::kDiamond)    { draw_diamond(d, ac, opa, scale); }
             if (ac.emergency) {
                 lv_draw_arc_dsc_t h;
                 lv_draw_arc_dsc_init(&h);
@@ -683,6 +709,7 @@ static void ac_draw_cb(lv_event_t *e) {
             lv_draw_label_dsc_init(&lc);
             lc.font = &lv_font_montserrat_14;
             lc.color = s_cInk;
+            lc.opa = opa;
             lv_area_t a1 = { (lv_coord_t)(ac.pos.x + 12), (lv_coord_t)(ac.pos.y - 14),
                              (lv_coord_t)(ac.pos.x + 142), (lv_coord_t)(ac.pos.y + 2) };
             if (ac.call[0]) lv_draw_label(d, &lc, &a1, ac.call, NULL);
@@ -690,6 +717,7 @@ static void ac_draw_cb(lv_event_t *e) {
             lv_draw_label_dsc_init(&la);
             la.font = &lv_font_montserrat_12;
             la.color = ac.color;
+            la.opa = opa;
             lv_area_t a2 = { a1.x1, (lv_coord_t)(ac.pos.y + 2), a1.x2, (lv_coord_t)(ac.pos.y + 20) };
             if (ac.altTxt[0]) lv_draw_label(d, &la, &a2, ac.altTxt, NULL);
         }
