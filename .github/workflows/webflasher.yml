@@ -59,6 +59,13 @@ jobs:
             0xe000  "$BOOT_APP0" \
             0x10000 "$B/firmware.bin"
 
+      - name: Vendor esp-web-tools (self-host; no external CDN, works on locked-down networks)
+        run: |
+          npm pack esp-web-tools@10.2.1
+          tar -xzf esp-web-tools-10.2.1.tgz
+          mkdir -p site/esp-web-tools
+          cp package/dist/web/*.js site/esp-web-tools/
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

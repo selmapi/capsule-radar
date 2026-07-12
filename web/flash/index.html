@@ -4,10 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Capsule Radar — Web Flasher</title>
-<!-- jsDelivr's +esm bundle pins the version and self-resolves the dependency graph;
-     the unpkg ?module build did a relative dynamic import that broke after unpkg's
-     @10 -> @10.2.1 redirect, so the custom element never registered (dead Install button). -->
-<script type="module" src="https://cdn.jsdelivr.net/npm/esp-web-tools@10.2.1/dist/web/install-button.js/+esm"></script>
+<!-- Self-hosted esp-web-tools, vendored into the Pages site by webflasher.yml (npm pack
+     esp-web-tools@10.2.1 -> site/esp-web-tools/). No external CDN, so the Install button
+     works on locked-down / CDN-blocked corporate networks. The dist uses relative imports,
+     so all chunks resolve same-origin. Bump the version here AND in webflasher.yml together. -->
+<script type="module" src="./esp-web-tools/install-button.js"></script>
 <style>
   :root { --green:#1dff86; --soft:#9affc8; --ink:#eafff3; }
   * { box-sizing: border-box; }
