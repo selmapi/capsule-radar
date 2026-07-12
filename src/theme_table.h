@@ -7,6 +7,7 @@ enum class ScopeStyle : uint8_t { kRings, kGrid, kVector };   // kRings=stock, k
 enum class BlipMode   : uint8_t { kAltRamp, kMono };          // altitude color-code vs single hue
 enum class Decoration : uint8_t { kNone, kSweep, kStarfield };
 enum class BlipShape  : uint8_t { kAuto, kChevron, kSilhouette, kDiamond };
+enum BlipFx : uint8_t { FX_LEADER = 1u<<0, FX_VECTOR = 1u<<1, FX_ALTSIZE = 1u<<2 };
 
 // One theme = chrome palette + background + scope geometry + blip policy + decoration.
 // Colors are 0xRRGGBB logical RGB (fed to lv_color_hex). `layer` tints the
@@ -27,6 +28,7 @@ struct ThemeDesc {
     bool       sweep;
     BlipShape  shape;
     bool       outline;
+    uint8_t    blipFx;
 };
 
 extern const ThemeDesc kThemes[];
