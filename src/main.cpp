@@ -15,7 +15,7 @@
 #include "theme_table.h"
 #include "ui.h"
 #include "display.h"                  // M0: CO5300 + LVGL bring-up
-#include "imu_qmi8658.h"             // face-down sleep
+#include "motion.h"                  // shake/auto-rotate/wake + face-down sleep (wraps imu_qmi8658)
 #include "gps.h"                     // LC76G GNSS (-G variant only)
 #include "battery.h"                 // AXP2101 battery gauge
 #include "rtc_pcf85063.h"            // PCF85063 RTC (offline clock + date)
@@ -63,6 +63,10 @@ static volatile bool         g_feedOk = true;                        // ADS-B fe
 static volatile uint32_t     g_lastFeedOkMs = 0;                     // millis() of the last good poll (HUD staleness)
 static volatile uint32_t     g_rebootAtMs = 0;                       // !=0: reboot when millis() reaches it (clean start after WiFi config)
 static String                g_tz = TZ_STR;                          // POSIX timezone (web-configurable, NVS); applied via configTzTime
+static bool                  g_mShake  = true;                       // shake-to-refresh enabled (web/NVS)
+static bool                  g_mRotate = true;                       // IMU auto-rotate enabled (web/NVS)
+static bool                  g_mWake   = true;                       // wake-on-motion enabled (web/NVS)
+static volatile bool         g_forcePoll = false;                    // shake -> ask adsb_task to poll now
 
 // Web-selectable time zones (label + POSIX TZ). The <option> value is the index; the save
 // handler maps it back to the POSIX string stored in NVS and used by configTzTime at boot.
@@ -126,6 +130,10 @@ static void adsb_task(void*) {
             // it refreshing even while the user taps around — a slow route/photo lookup (below)
             // can block this single network task, so it must never get ahead of the feed.
             const uint32_t nowMs = millis();
+            if (g_forcePoll) {                     // shake-to-refresh: poll now, but stay API-polite
+                g_forcePoll = false;
+                if (nowMs - lastPoll >= 1500) lastPoll = 0;
+            }
             const uint32_t pollInterval = g_onBattery ? POLL_INTERVAL_BATTERY_MS : POLL_INTERVAL_MS;
             if (lastPoll == 0 || nowMs - lastPoll >= pollInterval) {  // aircraft feed
                 lastPoll = nowMs;
@@ -190,6 +198,9 @@ static void loadSettings() {
     g_idleDimMs        = p.getUInt("idledim", IDLE_DIM_MS);
     g_units            = p.getInt("units", 0);
     g_tz               = p.getString("tz", TZ_STR);
+    g_mShake           = p.getBool("mshake", true);
+    g_mRotate          = p.getBool("mrot", true);
+    g_mWake            = p.getBool("mwake", true);
     p.end();
 }
 
@@ -446,6 +457,9 @@ static void handleRoot() {
         "<label>Aircraft trails</label><select onchange='tl(this.value)'>%s</select>"
         "<label>Max aircraft on screen</label><select onchange='mx(this.value)'>%s</select>"
         "<label>Screen rotation (USB-C position)</label><select onchange='ro(this.value)'>%s</select>"
+        "<label><input type=checkbox class=ck %s onchange='mr(this.checked)'>Auto-rotate (IMU)</label>"
+        "<label><input type=checkbox class=ck %s onchange='ms(this.checked)'>Shake to refresh</label>"
+        "<label><input type=checkbox class=ck %s onchange='mw(this.checked)'>Wake on motion</label>"
         "<label>Units</label><select onchange='u(this.value)'>%s</select></div>"
         "<div class=card><div class=t>Sound</div>"
         "<label>Volume</label>"
@@ -479,6 +493,9 @@ static void handleRoot() {
         "function tl(v){fetch('/trail?v='+v+'&save=1')}"
         "function mx(v){fetch('/maxac?v='+v+'&save=1')}"
         "function ro(v){fetch('/rotate?v='+v+'&save=1')}"
+        "function mr(c){fetch('/motion?rotate='+(c?1:0)+'&save=1')}"
+        "function ms(c){fetch('/motion?shake='+(c?1:0)+'&save=1')}"
+        "function mw(c){fetch('/motion?wake='+(c?1:0)+'&save=1')}"
         "function u(v){fetch('/units?v='+v+'&save=1')}"
         "function al(v){fetch('/alerts?mode='+v+'&save=1')}"
         "function px(v){fetch('/alerts?prox='+v+'&save=1')}"
@@ -495,7 +512,8 @@ static void handleRoot() {
         tzopts.c_str(),
         g_brightnessDay, iopts.c_str(), g_showSweep ? "checked" : "",
         g_showAirports ? "checked" : "", g_hideGround ? "checked" : "", maopts.c_str(), g_milOnly ? "checked" : "",
-        tlopts.c_str(), mxopts.c_str(), rotopts.c_str(), uopts.c_str(),
+        tlopts.c_str(), mxopts.c_str(), rotopts.c_str(),
+        g_mRotate ? "checked" : "", g_mShake ? "checked" : "", g_mWake ? "checked" : "", uopts.c_str(),
         g_volume, g_muted ? "checked" : "", aopts.c_str(), popts.c_str(),
         g_settings.homeLat, g_settings.homeLon, (g_tz == TZ_STR ? 0 : 1));
     g_web.send(200, "text/html", buf);
@@ -722,6 +740,22 @@ static void handleRotate() {   // display rotation 0/90/180/270 for any USB-C or
     g_web.send(200, "text/plain", "ok");
 }
 
+static void handleMotion() {   // shake-to-refresh / auto-rotate / wake-on-motion enables (live)
+    if (g_web.hasArg("shake"))  g_mShake  = g_web.arg("shake").toInt()  != 0;
+    if (g_web.hasArg("rotate")) g_mRotate = g_web.arg("rotate").toInt() != 0;
+    if (g_web.hasArg("wake"))   g_mWake   = g_web.arg("wake").toInt()   != 0;
+    motion_set_enabled(g_mShake, g_mRotate, g_mWake);
+    if (g_web.hasArg("save")) {
+        Preferences p;
+        p.begin("capsuleradar", false);
+        p.putBool("mshake", g_mShake);
+        p.putBool("mrot", g_mRotate);
+        p.putBool("mwake", g_mWake);
+        p.end();
+    }
+    g_web.send(200, "text/plain", "ok");
+}
+
 static void handleGps() {   // auto-set the centre point from the LC76G GPS (-G variant)
     if (g_web.hasArg("v")) {
         g_useGps = g_web.arg("v").toInt() != 0;
@@ -828,7 +862,8 @@ void setup() {
     ui_set_units(g_units);                       // apply saved unit preset
     ui_set_range_km(g_settings.rangeKm);         // show the loaded range
 
-    imu_begin();       // face-down sleep (no-op if the IMU isn't detected)
+    motion_begin();                                        // face-down sleep + shake/auto-rotate/wake (no-op if the IMU isn't detected)
+    motion_set_enabled(g_mShake, g_mRotate, g_mWake);       // apply settings loaded in loadSettings()
     battery_begin();   // AXP2101 (no-op if not detected / no battery)
     gps_begin();       // LC76G GNSS (no-op if not the -G variant)
     battery_enable_codec_rail();   // power the ES8311 analog rail before audio init
@@ -899,6 +934,7 @@ void setup() {
     g_web.on("/trail", handleTrail);
     g_web.on("/maxac", handleMaxAc);
     g_web.on("/rotate", handleRotate);
+    g_web.on("/motion", handleMotion);
     g_web.on("/gps", handleGps);
     g_web.on("/units", handleUnits);
     g_web.on("/update", HTTP_GET, handleUpdatePage);
@@ -917,9 +953,24 @@ void setup() {
 
 void loop() {
     display::loop();                // drive LVGL (render dirty areas + run timers)
+    motion_update();                // sample the IMU for shake/auto-rotate/wake/face-down (self-limits ~30 Hz)
     g_wm.process();                 // service the WiFi config portal (non-blocking)
     g_web.handleClient();           // serve the configuration web page
     if (g_useGps) gps_poll();       // pull NMEA from the LC76G (only when GPS auto-location is on)
+
+    // Shake-to-refresh: ask adsb_task (core 0) to poll right away.
+    if (g_mShake && motion_take_shake()) {
+        g_forcePoll = true;
+        Serial.println("[shake] refresh");   // TODO: replace with an on-screen flash/pulse once radar_view exposes one
+    }
+
+    // Auto-rotate: snap the display to whichever of the 4 quarter-turns the IMU reports.
+    // motion_orientation() self-gates on the auto-rotate enable flag (-1 when off).
+    {
+        const int o = motion_orientation();
+        if (o >= 0 && (uint8_t)(o / 90) != display::rotation())
+            display::setRotation((uint8_t)(o / 90));
+    }
 
     // scheduled reboot after a fresh WiFi config (see setSaveConfigCallback)
     if (g_rebootAtMs && (int32_t)(millis() - g_rebootAtMs) >= 0) { delay(50); ESP.restart(); }
@@ -1017,11 +1068,16 @@ void loop() {
     static int fdCount = 0;
     if (millis() - lastImu > 400) {
         lastImu = millis();
-        const int fd = imu_facedown();              // 1 down, 0 not, -1 read error
-        if (fd > 0)       { if (fdCount < 8) fdCount++; }
-        else if (fd == 0) fdCount = 0;              // -1 (I2C hiccup): leave the counter as-is
+        const bool fd = motion_facedown();          // orientation-agnostic (already debounced internally)
+        if (fd) { if (fdCount < 8) fdCount++; }
+        else      fdCount = 0;
         const bool sleep = (fdCount >= 4);   // ~1.6 s face-down
-        const bool idle  = g_idleDimMs > 0 && display::inactiveMs() > g_idleDimMs;
+        bool idle = g_idleDimMs > 0 && display::inactiveMs() > g_idleDimMs;
+        // Wake-on-motion: any picked-up-and-moved gesture un-dims the screen, same as a touch would.
+        if (idle && motion_take_wake()) {
+            lv_disp_trig_activity(NULL);
+            idle = false;
+        }
         if (sleep != g_asleep || idle != g_idle) {
             g_asleep = sleep;
             g_idle = idle;
