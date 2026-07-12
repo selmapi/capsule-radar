@@ -616,6 +616,11 @@ static void handleAlerts() {   // what triggers the alert sound (live)
     g_web.send(200, "text/plain", "ok");
 }
 
+static void handleTestSound() {   // debug: /testsound?cue=N plays one cue on demand (audio tuning)
+    if (g_web.hasArg("cue")) audio_play((AudioCue)constrain((int)g_web.arg("cue").toInt(), 0, 4));
+    g_web.send(200, "text/plain", "ok");
+}
+
 static void handleIdle() {   // idle auto-dim timeout (seconds; 0 = never)
     if (g_web.hasArg("v")) {
         const long s = g_web.arg("v").toInt();
@@ -944,6 +949,7 @@ void setup() {
     g_web.on("/bright", handleBright);
     g_web.on("/vol", handleVol);
     g_web.on("/alerts", handleAlerts);
+    g_web.on("/testsound", handleTestSound);
     g_web.on("/idle", handleIdle);
     g_web.on("/sweep", handleSweep);
     g_web.on("/airports", handleAirports);
