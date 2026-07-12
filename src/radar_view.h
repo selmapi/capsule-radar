@@ -73,4 +73,10 @@ void setTrailLength(int level);                  // 0=off 1=short 2=medium 3=lon
 void setMaxOnScreen(int n);                       // how many (nearest) aircraft to draw on the scope
 void flashRefresh();                              // brief on-screen confirmation for shake-to-refresh
 
+// Drop all accumulated trails + the persistent flow layer and force a clean repaint.
+// Call after a display::setRotation(): the flow canvas is a persistent bitmap that
+// isn't rebuilt on a rotation, so without this the pre-rotation tracks linger as
+// scattered "stale" tails until the next reproject (zoom) wipes them.
+void resetTrails();
+
 } // namespace radar

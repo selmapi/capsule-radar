@@ -730,6 +730,7 @@ static void handleRotate() {   // display rotation 0/90/180/270 for any USB-C or
     if (g_web.hasArg("v")) {
         g_rotation = constrain((int)g_web.arg("v").toInt(), 0, 3);
         display::setRotation((uint8_t)g_rotation);
+        radar::resetTrails();         // same reason as auto-rotate: clear the persistent flow bitmap
         if (g_web.hasArg("save")) {
             Preferences p;
             p.begin("capsuleradar", false);
@@ -969,8 +970,10 @@ void loop() {
     // motion_orientation() self-gates on the auto-rotate enable flag (-1 when off).
     {
         const int o = motion_orientation();
-        if (o >= 0 && (uint8_t)(o / 90) != display::rotation())
+        if (o >= 0 && (uint8_t)(o / 90) != display::rotation()) {
             display::setRotation((uint8_t)(o / 90));
+            radar::resetTrails();     // flow canvas is a persistent bitmap; drop pre-rotation tracks
+        }
     }
 
     // scheduled reboot after a fresh WiFi config (see setSaveConfigCallback)

@@ -822,6 +822,21 @@ void setMaxOnScreen(int n) {
     if (s_acLayer) lv_obj_invalidate(s_acLayer);
 }
 
+// Wipe every accumulated screen-space track and force a clean repaint. The reproject
+// block in update() already does this when the range/home changes; a display rotation
+// changes the panel orientation *without* touching range/home, so it never runs — yet the
+// persistent flow canvas (a bitmap that survives the rotation) then shows the old tracks
+// as scattered "stale" tails. Callers invoke this right after display::setRotation().
+void resetTrails() {
+    s_trails.clear();
+    s_flow.clear();
+    flow_redraw_all();                     // clear the persistent flow bitmap + repaint it empty
+    if (s_acLayer)   lv_obj_invalidate(s_acLayer);
+    if (s_gridLayer) lv_obj_invalidate(s_gridLayer);
+    // Also clear the trail already copied onto each live glyph so this frame draws none.
+    for (AcDraw &ac : s_acs) ac.trail.clear();
+}
+
 void init(void *lv_parent) {
     lv_obj_t *parent = (lv_obj_t *)lv_parent;
     s_parent = parent;
