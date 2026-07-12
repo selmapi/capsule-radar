@@ -16,13 +16,13 @@
 // inline elsewhere; change these constants during the tuning session.
 // ---------------------------------------------------------------------------------------
 constexpr uint32_t SAMPLE_MS       = 33;    // ~30 Hz
-constexpr float    SHAKE_G         = 0.60f; // |‖a‖-1| beyond this = a strong swing
+constexpr float    SHAKE_G         = 0.45f; // |‖a‖-1| beyond this = a strong swing
 constexpr int      SHAKE_SWINGS    = 3;     // strong alternating swings needed
-constexpr uint32_t SHAKE_WINDOW_MS = 600;
+constexpr uint32_t SHAKE_WINDOW_MS = 800;
 constexpr uint32_t SHAKE_COOLDOWN  = 2000;
 constexpr float    TILT_G          = 0.40f; // in-plane gravity below this = "flat", hold orientation
 constexpr uint32_t ROT_HOLD_MS     = 1000;  // candidate orientation must hold this long to commit
-constexpr float    WAKE_G          = 0.15f; // frame-to-frame |a| deviation to count as motion
+constexpr float    WAKE_G          = 0.30f; // frame-to-frame |a| deviation to count as motion
 constexpr float    FD_THRESH_G     = 0.55f; // face-down swing (matches old 9000/16384≈0.55g)
 // Auto-rotate axis mapping — CALIBRATED ON-DEVICE. The screen-plane axes and their signs
 // depend on how the QMI8658 is mounted; flip these during the tuning session until turning

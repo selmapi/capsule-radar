@@ -82,6 +82,7 @@ static lv_obj_t  *s_centerDot = nullptr;
 static lv_obj_t  *s_pulse     = nullptr;
 static lv_obj_t  *s_mascot    = nullptr;
 static lv_obj_t  *s_rangeLbl  = nullptr;
+static lv_obj_t  *s_refreshLbl = nullptr;
 static bool       s_rangeLblVisible = true;
 static bool       s_sweepEnabled    = true;
 static bool       s_airportsEnabled = true;
@@ -722,6 +723,11 @@ static void pulse_anim_cb(void *obj, int32_t v) {
     lv_obj_set_style_border_opa(o, (lv_opa_t)(220 - v * 220 / 100), 0);
 }
 
+static void refresh_hide_cb(lv_timer_t *t) {
+    if (s_refreshLbl) lv_obj_add_flag(s_refreshLbl, LV_OBJ_FLAG_HIDDEN);
+    lv_timer_del(t);
+}
+
 namespace radar {
 
 void setTheme(int t) {
@@ -934,6 +940,14 @@ void init(void *lv_parent) {
         }
     }
 
+    s_refreshLbl = lv_label_create(parent);
+    lv_label_set_text(s_refreshLbl, LV_SYMBOL_REFRESH "  REFRESH");
+    lv_obj_set_style_text_font(s_refreshLbl, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(s_refreshLbl, COL_INK, 0);
+    lv_obj_align(s_refreshLbl, LV_ALIGN_CENTER, 0, -40);
+    lv_obj_add_flag(s_refreshLbl, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_refreshLbl, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
     setTheme(s_theme);
 }
 
@@ -1133,5 +1147,12 @@ bool info(int idx, AcInfo &out) {
 }
 
 void tickSweep() { /* sweep self-animates via lv_timer */ }
+
+void flashRefresh() {
+    if (!s_refreshLbl) return;
+    lv_obj_clear_flag(s_refreshLbl, LV_OBJ_FLAG_HIDDEN);      // show
+    lv_timer_t *t = lv_timer_create(refresh_hide_cb, 900, nullptr);  // hide after 900ms
+    lv_timer_set_repeat_count(t, 1);
+}
 
 } // namespace radar

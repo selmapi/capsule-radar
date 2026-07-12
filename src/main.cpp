@@ -961,7 +961,8 @@ void loop() {
     // Shake-to-refresh: ask adsb_task (core 0) to poll right away.
     if (g_mShake && motion_take_shake()) {
         g_forcePoll = true;
-        Serial.println("[shake] refresh");   // TODO: replace with an on-screen flash/pulse once radar_view exposes one
+        radar::flashRefresh();
+        Serial.println("[shake] refresh");
     }
 
     // Auto-rotate: snap the display to whichever of the 4 quarter-turns the IMU reports.
