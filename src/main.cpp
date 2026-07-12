@@ -401,10 +401,14 @@ static void handleRoot() {
         gpsRow += "<div style='font-size:12px;opacity:.6;margin:-2px 0 6px'>"
                   "When on, the location above is used until the GPS gets a fix, then it takes over.</div>";
     }
-    static const size_t BUFSZ = 10240;
+    // 24 KB. Was 10 KB — the settings page grew past it (theme list, motion toggles, TZ list…)
+    // and snprintf() silently truncated it mid-<script>, which broke ALL page JS: the Leaflet
+    // map never initialised and every save/apply fetch() was undefined. Keep ample headroom;
+    // the length guard below now logs if we ever approach the cap again.
+    static const size_t BUFSZ = 24576;
     static char *buf = (char *)ps_malloc(BUFSZ);   // PSRAM: keep this big page buffer off the scarce
     if (!buf) return;                              //   internal heap (the contiguous RAM mbedTLS needs)
-    snprintf(buf, BUFSZ,
+    const int _pglen = snprintf(buf, BUFSZ,
         "<!DOCTYPE html><html><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         "<title>Capsule Radar</title>"
@@ -516,6 +520,11 @@ static void handleRoot() {
         g_mRotate ? "checked" : "", g_mShake ? "checked" : "", g_mWake ? "checked" : "", uopts.c_str(),
         g_volume, g_muted ? "checked" : "", aopts.c_str(), popts.c_str(),
         g_settings.homeLat, g_settings.homeLon, (g_tz == TZ_STR ? 0 : 1));
+    // snprintf returns the length it WOULD have written; >= BUFSZ means the page was
+    // truncated (mid-<script> → dead JS). Never let that be silent again.
+    if (_pglen < 0 || (size_t)_pglen >= BUFSZ)
+        Serial.printf("[web] settings page TRUNCATED: needed %d bytes, BUFSZ=%u — increase BUFSZ\n",
+                      _pglen, (unsigned)BUFSZ);
     g_web.send(200, "text/html", buf);
 }
 
