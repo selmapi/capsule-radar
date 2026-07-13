@@ -19,7 +19,7 @@
 
 static bool s_ok = false;
 static int16_t *s_buf = nullptr;     // tone scratch in PSRAM (keeps internal RAM free for TLS)
-static const size_t S_BUF_LEN = SR / 2 * 2;   // up to 500 ms, stereo interleaved
+static const size_t S_BUF_LEN = SR * 2;   // up to 1 s, stereo interleaved (room for the long Reaper blast)
 static volatile int  s_vol = 60;     // 0..100
 static volatile bool s_muted = false;
 static volatile int  s_cue = -1;
@@ -167,34 +167,69 @@ static size_t gen_beep2(int16_t *buf, size_t cap, float f1, float f2, int ms, fl
 }
 
 struct Note { float freq; int ms; int gapMs; };
+// One continuous "blast": sharp attack, a detuned rattle (f0 & f0*detune beating), the pitch
+// glides f0 -> fend over the last 40%, then an amplitude fade — i.e. BLAAAM...aaaa, no separate
+// tail notes. Phase-accumulated so the glide is click-free. Returns the stereo int16 count.
+static size_t gen_blast(int16_t *buf, size_t cap, float f0, float fend, float detune, int ms, float amp) {
+    size_t n = (size_t)((int64_t)SR * ms / 1000);
+    if (n * 2 > cap) n = cap / 2;
+    const size_t attack = SR / 400;          // ~2.5 ms sharp front (the "blast")
+    const size_t rel    = SR / 6;            // ~170 ms fade-out tail (the "...aaaa")
+    const size_t bend   = n * 6 / 10;        // last 40% glides f0 -> fend
+    float ph1 = 0.0f, ph2 = 0.0f;
+    for (size_t i = 0; i < n; ++i) {
+        float f = f0;
+        if (i > bend && n > bend) { float t = (float)(i - bend) / (float)(n - bend); f = f0 + (fend - f0) * t; }
+        ph1 += 2.0f * (float)M_PI * f / SR;
+        ph2 += 2.0f * (float)M_PI * f * detune / SR;
+        float env = 1.0f;
+        if (i < attack)          env = (float)i / (float)attack;
+        else if (i > n - rel)    env = (float)(n - i) / (float)rel;
+        float s = 0.5f * (sinf(ph1) + sinf(ph2));
+        int16_t v = (int16_t)(amp * env * s);
+        buf[i * 2] = v; buf[i * 2 + 1] = v;
+    }
+    return n * 2;
+}
+
 static void play_notes(int16_t *buf, float amp, const Note *notes, int count) {
     size_t bw;
     for (int k = 0; k < count; ++k) {
         size_t ns = gen_beep(buf, S_BUF_LEN, notes[k].freq, notes[k].ms, amp);
         i2s_write(I2S_PORT, buf, ns * 2, &bw, portMAX_DELAY);
-        if (notes[k].gapMs) delay(notes[k].gapMs);
+        if (notes[k].gapMs) {                              // REAL silence in the stream — a bare delay() overlaps
+            size_t frames = (size_t)((int64_t)SR * notes[k].gapMs / 1000);  // the note still clocking out of the DMA,
+            size_t sns = frames * 2;                       // so back-to-back notes blur into one beep.
+            if (sns > S_BUF_LEN) sns = S_BUF_LEN;
+            memset(buf, 0, sns * sizeof(int16_t));
+            i2s_write(I2S_PORT, buf, sns * 2, &bw, portMAX_DELAY);
+        }
     }
 }
 
 static void play_cue(int cue) {
     if (!s_ok || !s_buf || (s_muted && cue != CUE_SELFTEST) || s_vol <= 0) return;
     int16_t *buf = s_buf;
-    const float amp = (s_vol / 100.0f) * 17000.0f;
+    const float amp = (s_vol / 100.0f) * 28000.0f;   // louder: ~85% of int16 full-scale (was ~52%) for a small speaker in a noisy room
     digitalWrite(PIN_AUDIO_PA, HIGH);              // enable speaker amp
     delay(8);                                      // let the amp power up
 
     switch (cue) {
         case AUDIO_NEW:        { static const Note s[]={{880,150,0}};                       play_notes(buf, amp*0.7f, s, 1); } break;
         case AUDIO_INBOUND:    { static const Note s[]={{560,170,0}};                       play_notes(buf, amp, s, 1); } break;
-        case AUDIO_MILITARY:   { static const Note s[]={{440,90,20},{330,130,0}};           play_notes(buf, amp, s, 2); } break;
-        case AUDIO_EMERGENCY:  { static const Note s[]={{760,150,25},{560,150,25},{760,150,25},{560,150,0}}; play_notes(buf, amp, s, 4); } break;
-        case AUDIO_ME_EMERGENCY: {
+        case AUDIO_MILITARY: {   // detuned-swell "military aircraft" cue (Selma's pick), all themes
             size_t bw;
-            for (int rep=0; rep<2; ++rep) {
-                size_t ns = gen_beep2(buf, S_BUF_LEN, 185.0f, 196.0f, 500, amp);
-                i2s_write(I2S_PORT, buf, ns*2, &bw, portMAX_DELAY);
-                delay(60);
+            for (int rep = 0; rep < 2; ++rep) {
+                size_t ns = gen_beep2(buf, S_BUF_LEN, 505.0f, 533.0f, 600, amp);
+                i2s_write(I2S_PORT, buf, ns * 2, &bw, portMAX_DELAY);
+                if (rep == 0) delay(60);
             }
+        } break;
+        case AUDIO_EMERGENCY:  { static const Note s[]={{760,150,25},{560,150,25},{760,150,25},{560,150,0}}; play_notes(buf, amp, s, 4); } break;
+        case AUDIO_ME_EMERGENCY: {   // one continuous blast: sharp attack -> detuned rattle -> pitch glides down + fades (BLAAAMaaaa, no twinkle)
+            size_t bw;
+            size_t ns = gen_blast(buf, S_BUF_LEN, 545.0f, 480.0f, 1.09f, 950, amp);
+            i2s_write(I2S_PORT, buf, ns * 2, &bw, portMAX_DELAY);
         } break;
         case CUE_SELFTEST: {   // ~2 s continuous tone (as before)
             size_t ns = gen_beep(buf, S_BUF_LEN, 1000.0f, 480, amp);
