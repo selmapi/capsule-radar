@@ -238,7 +238,7 @@ static void checkAudioEvents() {
                 radar::flashAlert();                          // red screen flash, all themes
             }
         } else if (g_alertMode >= 2) {
-            if      (isNew && isMil)  audio_play(AUDIO_MILITARY);
+            if      (isNew && isMil)  audio_play(radar::theme() == THEME_MASSEFFECT ? AUDIO_ME_EMERGENCY : AUDIO_MILITARY);   // ME theme: military also gets the Reaper
             else if (newProx)         audio_play(AUDIO_INBOUND);
             else if (isNew && millis() - lastNew > 3000) { audio_play(AUDIO_NEW); lastNew = millis(); }
         }
