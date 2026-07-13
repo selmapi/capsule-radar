@@ -81,6 +81,7 @@ static lv_obj_t  *s_rose[4]   = {nullptr, nullptr, nullptr, nullptr};
 static lv_obj_t  *s_centerDot = nullptr;
 static lv_obj_t  *s_pulse     = nullptr;
 static lv_obj_t  *s_mascot    = nullptr;
+static lv_obj_t  *s_lcars     = nullptr;
 static lv_obj_t  *s_rangeLbl  = nullptr;
 static lv_obj_t  *s_refreshLbl = nullptr;
 static lv_obj_t  *s_alertFlash = nullptr;
@@ -890,6 +891,7 @@ void setTheme(int t) {
     show(s_centerDot, ringsChrome);
     show(s_pulse, ringsChrome);
     if (s_mascot) show(s_mascot, s_theme == THEME_CLAUDEIC);
+    if (s_lcars)  show(s_lcars,  s_theme == THEME_LCARS);
 
     // retint the persistent chrome objects for the active palette
     if (s_rose[0]) lv_obj_set_style_text_color(s_rose[0], s_cInk, 0);
@@ -1079,6 +1081,35 @@ void init(void *lv_parent) {
             lv_obj_clear_flag(eye, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
             lv_obj_set_style_bg_color(eye, dark, 0);
             lv_obj_set_style_bg_opa(eye, LV_OPA_COVER, 0);
+        }
+    }
+
+    // LCARS-only pill-chrome badge (a few rounded blocks, lower-left; shown/hidden in setTheme)
+    {
+        const lv_color_t apri = lv_color_hex(radar::kThemes[THEME_LCARS].ring);   // #FF9966
+        const lv_color_t mauv = lv_color_hex(radar::kThemes[THEME_LCARS].lead);   // #CC99CC
+        const lv_color_t peri = lv_color_hex(radar::kThemes[THEME_LCARS].soft);   // #9999FF
+        s_lcars = lv_obj_create(parent);
+        lv_obj_remove_style_all(s_lcars);
+        lv_obj_set_size(s_lcars, 30, 46);
+        lv_obj_clear_flag(s_lcars, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_align(s_lcars, LV_ALIGN_CENTER, -150, 150);   // ~7-8 o'clock, inside the round safe area
+        lv_obj_set_style_bg_opa(s_lcars, LV_OPA_TRANSP, 0);
+
+        struct { lv_coord_t w, h, y; lv_color_t c; } pills[3] = {
+            { 30, 14, 0,  apri },
+            { 22, 12, 17, mauv },
+            { 26, 11, 32, peri },
+        };
+        for (auto &p : pills) {
+            lv_obj_t *pill = lv_obj_create(s_lcars);
+            lv_obj_remove_style_all(pill);
+            lv_obj_set_size(pill, p.w, p.h);
+            lv_obj_align(pill, LV_ALIGN_TOP_LEFT, 0, p.y);
+            lv_obj_clear_flag(pill, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_set_style_radius(pill, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_color(pill, p.c, 0);
+            lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, 0);
         }
     }
 
