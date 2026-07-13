@@ -32,6 +32,12 @@ const ThemeDesc kThemes[] = {
   {"Top Gun", 0x7F99A8,0xAEC4D0,0xDCE8ED,0x9FB8C4, 0x1B2830,0x5E7684, ScopeStyle::kRings, BlipMode::kMono,0xB2413A, Decoration::kSweep,true, BlipShape::kSilhouette,false, 0},
   // 14 Firefox (vector arcade; orange chrome, red chevrons, no sweep)
   {"Firefox", 0xFF8A2E,0xFFB454,0xFFB454,0xFF8A2E, 0x000000,0x6A5A4A, ScopeStyle::kVector, BlipMode::kMono,0xFF2A1A, Decoration::kNone,false, BlipShape::kChevron,false, 0},
+  // 15 Saber (Star Wars — near-black, steel chrome, white core, cool-blue mono blips)
+  {"Saber", 0x9FB0C4,0x2A6AFF,0xFFFFFF,0x7A8290, 0x05060A,0x2E3A48, ScopeStyle::kRings, BlipMode::kMono,0x4A7AFF, Decoration::kSweep,true, BlipShape::kAuto, false, 0},
+  // 16 LCARS (Star Trek — apricot ring, mauve/periwinkle accents; pill-chrome badge added in setTheme)
+  {"LCARS", 0xFF9966,0xCC99CC,0xFFCC99,0x9999FF, 0x000000,0x5A4A66, ScopeStyle::kRings, BlipMode::kAltRamp,0, Decoration::kSweep,true, BlipShape::kAuto, false, 0},
+  // 17 Browncoat (Firefly — rust rings, gold accents, cream ink; targeting-reticle drawn in grid_draw_cb)
+  {"Browncoat", 0xC87A3A,0xD4A050,0xE8D0A8,0x9A7A50, 0x120C06,0x5A4326, ScopeStyle::kRings, BlipMode::kAltRamp,0, Decoration::kSweep,true, BlipShape::kAuto, false, 0},
 };
 const int kThemeCount = (int)(sizeof(kThemes)/sizeof(kThemes[0]));
 static_assert((int)(sizeof(kThemes) / sizeof(kThemes[0])) == THEME_COUNT,
