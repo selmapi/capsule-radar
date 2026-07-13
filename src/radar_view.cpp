@@ -323,6 +323,33 @@ static void grid_draw_cb(lv_event_t *e) {
     lv_point_t v1 = { s_cx, (lv_coord_t)(s_cy - 211) }, v2 = { s_cx, (lv_coord_t)(s_cy + 211) };
     lv_draw_line(d, &ll, &h1, &h2);
     lv_draw_line(d, &ll, &v1, &v2);
+
+    // Browncoat targeting reticle: center box + four corner lock-marks (rust/gold)
+    if (s_theme == THEME_BROWNCOAT) {
+        // center box outline
+        lv_draw_rect_dsc_t bx; lv_draw_rect_dsc_init(&bx);
+        bx.bg_opa = LV_OPA_TRANSP;
+        bx.border_color = s_cLead; bx.border_width = 2; bx.border_opa = 220;
+        lv_area_t box = { (lv_coord_t)(s_cx - 16), (lv_coord_t)(s_cy - 16),
+                          (lv_coord_t)(s_cx + 16), (lv_coord_t)(s_cy + 16) };
+        lv_draw_rect(d, &bx, &box);
+
+        // four L-brackets just inside the outer ring (NE/SE/SW/NW), rust
+        lv_draw_line_dsc_t br; lv_draw_line_dsc_init(&br);
+        br.color = s_cRing; br.width = 2; br.opa = 200;
+        const lv_coord_t rad = RADAR_R_OUTER_PX - 8;
+        const lv_coord_t arm = 16;
+        for (int q = 0; q < 4; ++q) {
+            int sx = (q == 0 || q == 1) ? 1 : -1;   // +x for NE/SE
+            int sy = (q == 0 || q == 3) ? -1 : 1;    // -y for NE/NW
+            lv_coord_t cxp = (lv_coord_t)(s_cx + sx * (rad * 0.62f));
+            lv_coord_t cyp = (lv_coord_t)(s_cy + sy * (rad * 0.62f));
+            lv_point_t h1 = { cxp, cyp }, h2 = { (lv_coord_t)(cxp - sx * arm), cyp };
+            lv_point_t v1 = { cxp, cyp }, v2 = { cxp, (lv_coord_t)(cyp - sy * arm) };
+            lv_draw_line(d, &br, &h1, &h2);
+            lv_draw_line(d, &br, &v1, &v2);
+        }
+    }
 }
 
 // =============================== sweep =======================================
