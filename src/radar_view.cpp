@@ -860,7 +860,7 @@ namespace radar {
 
 void setTheme(int t) {
     // Clamp to a valid theme index for any input (negative, >= count). THEME_COUNT
-    // (radar_view.h) must equal kThemeCount (theme_table.cpp) — both are 15.
+    // (radar_view.h) must equal kThemeCount (theme_table.cpp) — both are 18.
     s_theme = ((t % THEME_COUNT) + THEME_COUNT) % THEME_COUNT;
     s_desc  = &radar::kThemes[s_theme];
     const bool drg = (s_desc->scope == radar::ScopeStyle::kGrid);
@@ -1093,7 +1093,7 @@ void init(void *lv_parent) {
         lv_obj_remove_style_all(s_lcars);
         lv_obj_set_size(s_lcars, 30, 46);
         lv_obj_clear_flag(s_lcars, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_align(s_lcars, LV_ALIGN_CENTER, -150, 150);   // ~7-8 o'clock, inside the round safe area
+        lv_obj_align(s_lcars, LV_ALIGN_CENTER, -140, 135);   // ~7-8 o'clock; pulled in so the 46px badge clears the round rim
         lv_obj_set_style_bg_opa(s_lcars, LV_OPA_TRANSP, 0);
 
         struct { lv_coord_t w, h, y; lv_color_t c; } pills[3] = {
