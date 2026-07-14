@@ -304,6 +304,17 @@ static void applyBrightness() {
 // ----------------------------- configuration web --------------------------------
 static WebServer g_web(80);
 
+// Stream one accordion card as its own chunked sendContent() call. `icon`/`title` are small
+// literal C strings; `hint` is the short current-value summary shown in the collapsed header;
+// `inner` is the carried-over control markup for that group; `open` starts the card expanded.
+static void sendCard(const char *icon, const char *title, const String &hint, const String &inner, bool open) {
+    g_web.sendContent(String(F("<div class='card")) + (open ? " open" : "") +
+        F("'><div class=chead onclick='tg(this)'><span class=ic>") + icon +
+        F("</span><span class=ti>") + title + F("</span><span class=cv>") + hint +
+        F("</span><span class=ar>&#9656;</span></div><div class=cbody>") + inner +
+        F("</div></div>"));
+}
+
 static void handleRoot() {
     const int th = radar::theme();
     const int ranges[] = {10, 15, 25, 30, 50, 100, 150, 250};
@@ -410,14 +421,27 @@ static void handleRoot() {
         gpsRow += "<div style='font-size:12px;opacity:.6;margin:-2px 0 6px'>"
                   "When on, the location above is used until the GPS gets a fix, then it takes over.</div>";
     }
-    // 24 KB. Was 10 KB — the settings page grew past it (theme list, motion toggles, TZ list…)
-    // and snprintf() silently truncated it mid-<script>, which broke ALL page JS: the Leaflet
-    // map never initialised and every save/apply fetch() was undefined. Keep ample headroom;
-    // the length guard below now logs if we ever approach the cap again.
-    static const size_t BUFSZ = 24576;
-    static char *buf = (char *)ps_malloc(BUFSZ);   // PSRAM: keep this big page buffer off the scarce
-    if (!buf) return;                              //   internal heap (the contiguous RAM mbedTLS needs)
-    const int _pglen = snprintf(buf, BUFSZ,
+    // Current-value hints shown in each (possibly-collapsed) card header.
+    String hintLoc = String((int)(g_settings.rangeKm * ufac + 0.5f)) + " " + uname;
+    String hintAppearance = String(radar::kThemes[th].name);
+    const int nFilters = (g_hideGround ? 1 : 0) + (g_milOnly ? 1 : 0) + (g_minAltFt > 0 ? 1 : 0);
+    String hintTraffic = String(nFilters) + (nFilters == 1 ? " filter" : " filters");
+    String hintMotion = (g_mRotate || g_mShake || g_mWake) ? "on" : "off";
+    String hintSound = g_muted ? String("muted") : (String(g_volume) + "%");
+    const char *tzLabel = "auto";
+    for (int i = 0; i < TZOPTS_N; ++i) {
+        if (g_tz == TZOPTS[i].tz) { tzLabel = TZOPTS[i].label; break; }
+    }
+    String hintTime = String(tzLabel);
+
+    // Chunked transfer: no fixed-size buffer, so the page can never again silently truncate
+    // mid-<script> the way the old single snprintf(buf, 24576, …) once did. Each card below
+    // is its own short-lived String, sent via its own sendContent() call.
+    g_web.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    g_web.send(200, "text/html", "");
+
+    // ---- head + CSS (every rule carried over from the old page, plus accordion/toast) ----
+    g_web.sendContent(F(
         "<!DOCTYPE html><html><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         "<title>Capsule Radar</title>"
@@ -425,116 +449,166 @@ static void handleRoot() {
         "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>"
         "<style>"
         "*{box-sizing:border-box}"
-        "body{background:radial-gradient(circle at 50%% -10%%,#0a1f15,#04100a 70%%);color:#cdd6d1;"
+        "body{background:radial-gradient(circle at 50% -10%,#0a1f15,#04100a 70%);color:#cdd6d1;"
         "font-family:system-ui,-apple-system,sans-serif;margin:0 auto;padding:20px;max-width:480px;min-height:100vh}"
         ".hd{display:flex;align-items:center;gap:12px;margin-bottom:16px}"
-        ".dot{width:44px;height:44px;border-radius:50%%;border:2px solid #1dff86;position:relative;"
+        ".dot{width:44px;height:44px;border-radius:50%;border:2px solid #1dff86;position:relative;"
         "overflow:hidden;flex:0 0 auto;box-shadow:0 0 16px rgba(29,255,134,.4)}"
         ".dot::before{content:'';position:absolute;inset:0;animation:sw 3s linear infinite;"
-        "background:conic-gradient(from 0deg,rgba(29,255,134,.65),transparent 55%%)}"
+        "background:conic-gradient(from 0deg,rgba(29,255,134,.65),transparent 55%)}"
         "@keyframes sw{to{transform:rotate(360deg)}}"
         "h1{color:#1dff86;font-size:20px;margin:0}.sub{color:#6f8c7d;font-size:12px;margin:2px 0 0}"
         ".t{color:#1dff86;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;opacity:.85}"
         "label{display:block;margin:12px 0 4px;color:#9affc8;font-size:13px}"
-        "input,select{width:100%%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #2a4a39;"
+        "input,select{width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #2a4a39;"
         "background:#0c1a12;color:#eafff3;font-size:16px}"
         "input:focus,select:focus{outline:none;border-color:#1dff86;box-shadow:0 0 0 2px rgba(29,255,134,.18)}"
-        "button{margin-top:16px;width:100%%;padding:12px;border:0;border-radius:8px;background:#1dff86;"
+        "button{margin-top:16px;width:100%;padding:12px;border:0;border-radius:8px;background:#1dff86;"
         "color:#04140b;font-weight:700;font-size:16px}button:active{opacity:.85}"
         ".w{background:#ffb23c}.card{background:rgba(10,20,14,.85);border:1px solid #1f3a2b;border-radius:14px;padding:16px;margin-bottom:14px}"
         ".ft{color:#5f7a6c;font-size:12px;text-align:center;margin-top:6px}.ft code{color:#9affc8}"
         ".ck{width:auto;display:inline;margin-right:8px;vertical-align:middle}"
         ".sec{background:#0c1a12!important;color:#1dff86!important;border:1px solid #2a4a39!important}"
         "#map{height:220px;border-radius:10px;margin:6px 0 8px;border:1px solid #2a4a39;z-index:0}"
+        ".card{background:rgba(10,20,14,.85);border:1px solid #1f3a2b;border-radius:14px;margin-bottom:10px;overflow:hidden}"
+        ".chead{display:flex;align-items:center;gap:9px;padding:13px 15px;cursor:pointer;user-select:none}"
+        ".chead .ic{width:20px;text-align:center}"
+        ".chead .ti{color:#1dff86;font-size:11px;letter-spacing:1.3px;text-transform:uppercase;flex:1}"
+        ".chead .cv{color:#5f7a6c;font-size:11px}.chead .ar{color:#5f7a6c;transition:transform .2s}"
+        ".card.open .chead .ar{transform:rotate(90deg)}"
+        ".cbody{padding:0 15px 15px;display:none}.card.open .cbody{display:block}"
+        "#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);opacity:0;"
+        "transition:.25s;background:#0c1a12;border:1px solid #1dff86;color:#1dff86;padding:8px 16px;"
+        "border-radius:20px;font-size:13px;pointer-events:none;z-index:1000}"
+        "#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}"
         "</style></head><body>"
-        "<div class=hd><div class=dot></div><div><h1>Capsule Radar</h1><p class=sub>Live ADS-B radar &middot; configuration</p></div></div>"
-        "<div class=card><div class=t>Location &amp; range</div><form method=POST action=/save>"
-        "<label>Center point &mdash; tap the map or drag the pin</label>"
-        "<div id=map></div>"
-        "<label>Center latitude</label><input id=lat name=lat value='%.5f'>"
-        "<label>Center longitude</label><input id=lon name=lon value='%.5f'>"
-        "%s"
-        "<label>Display range</label><select name=range>%s</select>"
-        "<label>Theme</label><select name=theme>%s</select>"
-        "<label>Time zone</label><select name=tz>%s</select>"
-        "<button>Save &amp; restart</button></form></div>"
-        "<div class=card><div class=t>Display</div>"
-        "<label>Brightness</label>"
-        "<input type=range min=5 max=255 value='%d' oninput='b(this.value,0)' onchange='b(this.value,1)'>"
-        "<label>Dim screen after</label><select onchange='d(this.value)'>%s</select>"
-        "<label><input type=checkbox class=ck %s onchange='sw(this.checked)'>Show radar sweep</label>"
-        "<label><input type=checkbox class=ck %s onchange='ap(this.checked)'>Show airports</label>"
-        "<label><input type=checkbox class=ck %s onchange='hg(this.checked)'>Hide aircraft on the ground</label>"
-        "<label>Minimum altitude</label><select onchange='ma(this.value)'>%s</select>"
-        "<label><input type=checkbox class=ck %s onchange='mo(this.checked)'>Military aircraft only</label>"
-        "<label>Aircraft trails</label><select onchange='tl(this.value)'>%s</select>"
-        "<label>Max aircraft on screen</label><select onchange='mx(this.value)'>%s</select>"
-        "<label>Screen rotation (USB-C position)</label><select onchange='ro(this.value)'>%s</select>"
-        "<label><input type=checkbox class=ck %s onchange='mr(this.checked)'>Auto-rotate (IMU)</label>"
-        "<label><input type=checkbox class=ck %s onchange='ms(this.checked)'>Shake to refresh</label>"
-        "<label><input type=checkbox class=ck %s onchange='mw(this.checked)'>Wake on motion</label>"
-        "<label>Units</label><select onchange='u(this.value)'>%s</select></div>"
-        "<div class=card><div class=t>Sound</div>"
-        "<label>Volume</label>"
-        "<input type=range min=0 max=100 value='%d' oninput='v(this.value,0)' onchange='v(this.value,1)'>"
-        "<label><input type=checkbox class=ck %s onchange='m(this.checked)'>Mute alerts</label>"
-        "<label>Alert on</label><select onchange='al(this.value)'>%s</select>"
-        "<label>Proximity alert</label><select onchange='px(this.value)'>%s</select>"
-        "<button type=button class=sec onclick='t()'>Test ping</button></div>"
-        "<div class=card><div class=t>Network</div>"
-        "<p style='color:#9affc8;font-size:13px;margin:0 0 4px'>Forget the saved WiFi and reopen the setup portal.</p>"
-        "<form method=POST action=/wifi><button class=w>Reset WiFi</button></form></div>"
-        "<p class=ft>Reach me at <code>capsuleradar.local</code> &middot; <a href=/update style='color:#9affc8'>Firmware update</a> &middot; v" FW_VERSION "</p>"
-        "<script>"
-        "var C=[%.5f,%.5f];var MAP=L.map('map').setView(C,10);"
+        "<div class=hd><div class=dot></div><div><h1>Capsule Radar</h1>"
+        "<p class=sub>Live ADS-B radar &middot; configuration</p></div></div>"));
+
+    // ---- body: 6 accordion cards, each its own chunk ----
+    {
+        String inner = String(F("<label>Center point &mdash; tap the map or drag the pin</label>"
+            "<div id=map></div>"
+            "<label>Center latitude</label><input id=lat name=lat value='")) +
+            String(g_settings.homeLat, 5) + F("'>"
+            "<label>Center longitude</label><input id=lon name=lon value='") +
+            String(g_settings.homeLon, 5) + F("'>") + gpsRow +
+            F("<label>Display range</label><select name=range>") + ropts +
+            F("</select><button>Save &amp; restart</button>");
+        sendCard("\xE2\x8C\x96", "Location &amp; Range", hintLoc,
+            String(F("<form method=POST action=/save>")) + inner + F("</form>"), true);
+    }
+    {
+        String inner = String(F("<label>Theme</label><select onchange='th(this.value)'>")) + topts +
+            F("</select><label>Brightness</label>"
+              "<input type=range min=5 max=255 value='") + String(g_brightnessDay) +
+            F("' oninput='b(this.value,0)' onchange='b(this.value,1)'>"
+              "<label>Dim screen after</label><select onchange='d(this.value)'>") + iopts +
+            F("</select><label><input type=checkbox class=ck ") + (g_showSweep ? "checked" : "") +
+            F(" onchange='sw(this.checked)'>Show radar sweep</label>"
+              "<label>Units</label><select onchange='u(this.value)'>") + uopts +
+            F("</select><label>Screen rotation (USB-C position)</label><select onchange='ro(this.value)'>") +
+            rotopts + F("</select>");
+        sendCard("\xE2\x97\x90", "Appearance", hintAppearance, inner, false);
+    }
+    {
+        String inner = String(F("<label><input type=checkbox class=ck ")) + (g_showAirports ? "checked" : "") +
+            F(" onchange='ap(this.checked)'>Show airports</label>"
+              "<label><input type=checkbox class=ck ") + (g_hideGround ? "checked" : "") +
+            F(" onchange='hg(this.checked)'>Hide aircraft on the ground</label>"
+              "<label><input type=checkbox class=ck ") + (g_milOnly ? "checked" : "") +
+            F(" onchange='mo(this.checked)'>Military aircraft only</label>"
+              "<label>Minimum altitude</label><select onchange='ma(this.value)'>") + maopts +
+            F("</select><label>Aircraft trails</label><select onchange='tl(this.value)'>") + tlopts +
+            F("</select><label>Max aircraft on screen</label><select onchange='mx(this.value)'>") + mxopts +
+            F("</select>");
+        sendCard("\xE2\x9C\x88", "Traffic &amp; Filters", hintTraffic, inner, false);
+    }
+    {
+        String inner = String(F("<label><input type=checkbox class=ck ")) + (g_mRotate ? "checked" : "") +
+            F(" onchange='mr(this.checked)'>Auto-rotate (IMU)</label>"
+              "<label><input type=checkbox class=ck ") + (g_mShake ? "checked" : "") +
+            F(" onchange='ms(this.checked)'>Shake to refresh</label>"
+              "<label><input type=checkbox class=ck ") + (g_mWake ? "checked" : "") +
+            F(" onchange='mw(this.checked)'>Wake on motion</label>");
+        sendCard("\xE2\xA4\xBE", "Motion", hintMotion, inner, false);
+    }
+    {
+        String inner = String(F("<label>Volume</label>"
+              "<input type=range min=0 max=100 value='")) + String(g_volume) +
+            F("' oninput='v(this.value,0)' onchange='v(this.value,1)'>"
+              "<label><input type=checkbox class=ck ") + (g_muted ? "checked" : "") +
+            F(" onchange='m(this.checked)'>Mute alerts</label>"
+              "<label>Alert on</label><select onchange='al(this.value)'>") + aopts +
+            F("</select><label>Proximity alert</label><select onchange='px(this.value)'>") + popts +
+            F("</select><button type=button class=sec onclick='tst()'>Test ping</button>");
+        sendCard("\xE2\x99\xAA", "Sound &amp; Alerts", hintSound, inner, false);
+    }
+    {
+        String inner = String(F("<label>Time zone</label><select id=tzsel onchange='tz(this.value)'>")) +
+            tzopts + F("</select>"
+              "<p style='color:#9affc8;font-size:13px;margin:12px 0 4px'>Forget the saved WiFi and reopen the setup portal.</p>"
+              "<form method=POST action=/wifi><button class=w>Reset WiFi</button></form>"
+              "<p class=ft>Reach me at <code>capsuleradar.local</code> &middot; "
+              "<a href=/update style='color:#9affc8'>Firmware update</a> &middot; v") +
+            String(FW_VERSION) + F("</p>");
+        sendCard("\xE2\x8F\xB1", "Time &amp; System", hintTime, inner, false);
+    }
+
+    // ---- script + tail ----
+    String script;
+    script.reserve(2400);
+    script += F("<div id=toast>Saved &check;</div><script>"
+        "var C=[");
+    script += String(g_settings.homeLat, 5);
+    script += ',';
+    script += String(g_settings.homeLon, 5);
+    script += F("];var MAP=L.map('map').setView(C,10);"
         "L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'(c) OpenStreetMap'}).addTo(MAP);"
         "var MK=L.marker(C,{draggable:true}).addTo(MAP);"
         "function S(p){document.getElementById('lat').value=p.lat.toFixed(5);document.getElementById('lon').value=p.lng.toFixed(5);}"
         "MK.on('dragend',function(){S(MK.getLatLng());});"
         "MAP.on('click',function(e){MK.setLatLng(e.latlng);S(e.latlng);});"
         "setTimeout(function(){MAP.invalidateSize();},300);"
-        "function b(v,s){fetch('/bright?v='+v+(s?'&save=1':''))}"
-        "function v(x,s){fetch('/vol?v='+x+(s?'&save=1':''))}"
-        "function m(c){fetch('/vol?mute='+(c?1:0)+'&save=1')}"
-        "function t(){fetch('/vol?test=1')}"
-        "function d(v){fetch('/idle?v='+v+'&save=1')}"
-        "function sw(c){fetch('/sweep?v='+(c?1:0)+'&save=1')}"
-        "function ap(c){fetch('/airports?v='+(c?1:0)+'&save=1')}"
-        "function hg(c){fetch('/ground?v='+(c?1:0)+'&save=1')}"
-        "function ma(v){fetch('/altmin?v='+v+'&save=1')}"
-        "function mo(c){fetch('/milonly?v='+(c?1:0)+'&save=1')}"
-        "function tl(v){fetch('/trail?v='+v+'&save=1')}"
-        "function mx(v){fetch('/maxac?v='+v+'&save=1')}"
-        "function ro(v){fetch('/rotate?v='+v+'&save=1')}"
-        "function mr(c){fetch('/motion?rotate='+(c?1:0)+'&save=1')}"
-        "function ms(c){fetch('/motion?shake='+(c?1:0)+'&save=1')}"
-        "function mw(c){fetch('/motion?wake='+(c?1:0)+'&save=1')}"
-        "function u(v){fetch('/units?v='+v+'&save=1')}"
-        "function al(v){fetch('/alerts?mode='+v+'&save=1')}"
-        "function px(v){fetch('/alerts?prox='+v+'&save=1')}"
-        "function gp(c){fetch('/gps?v='+(c?1:0)+'&save=1')}"
-        // auto-pick the visitor's time zone from their browser clock (only if they haven't set one)
-        "var TZSET=%d;(function(){if(TZSET)return;"
+        "function toast(){var el=document.getElementById('toast');el.classList.add('show');"
+        "clearTimeout(window._tt);window._tt=setTimeout(function(){el.classList.remove('show')},1200);}"
+        "function tg(h){h.parentElement.classList.toggle('open');}"
+        "function th(v){fetch('/theme?v='+v+'&save=1').then(toast);}"
+        "function tz(v){fetch('/tz?v='+v+'&save=1').then(toast);}"
+        "function b(v,s){fetch('/bright?v='+v+(s?'&save=1':'')).then(function(){if(s)toast();});}"
+        "function v(x,s){fetch('/vol?v='+x+(s?'&save=1':'')).then(function(){if(s)toast();});}"
+        "function m(c){fetch('/vol?mute='+(c?1:0)+'&save=1').then(toast);}"
+        "function tst(){fetch('/vol?test=1');}"
+        "function d(v){fetch('/idle?v='+v+'&save=1').then(toast);}"
+        "function sw(c){fetch('/sweep?v='+(c?1:0)+'&save=1').then(toast);}"
+        "function ap(c){fetch('/airports?v='+(c?1:0)+'&save=1').then(toast);}"
+        "function hg(c){fetch('/ground?v='+(c?1:0)+'&save=1').then(toast);}"
+        "function ma(v){fetch('/altmin?v='+v+'&save=1').then(toast);}"
+        "function mo(c){fetch('/milonly?v='+(c?1:0)+'&save=1').then(toast);}"
+        "function tl(v){fetch('/trail?v='+v+'&save=1').then(toast);}"
+        "function mx(v){fetch('/maxac?v='+v+'&save=1').then(toast);}"
+        "function ro(v){fetch('/rotate?v='+v+'&save=1').then(toast);}"
+        "function mr(c){fetch('/motion?rotate='+(c?1:0)+'&save=1').then(toast);}"
+        "function ms(c){fetch('/motion?shake='+(c?1:0)+'&save=1').then(toast);}"
+        "function mw(c){fetch('/motion?wake='+(c?1:0)+'&save=1').then(toast);}"
+        "function u(v){fetch('/units?v='+v+'&save=1').then(toast);}"
+        "function al(v){fetch('/alerts?mode='+v+'&save=1').then(toast);}"
+        "function px(v){fetch('/alerts?prox='+v+'&save=1').then(toast);}"
+        "function gp(c){fetch('/gps?v='+(c?1:0)+'&save=1').then(toast);}"
+        // auto-pick the visitor's time zone from their browser clock (only if they haven't set one);
+        // now that tz is a live setting (no restart form to submit it on), apply it immediately too.
+        "var TZSET=");
+    script += String((g_tz == TZ_STR) ? 0 : 1);
+    script += F(";(function(){if(TZSET)return;"
         "var d=new Date(),j=new Date(d.getFullYear(),0,1).getTimezoneOffset(),"
         "u=new Date(d.getFullYear(),6,1).getTimezoneOffset(),o=-Math.max(j,u),s=(j!=u)?1:0,"
-        "e=document.querySelector('select[name=tz]'),b=-1,i;"
+        "e=document.getElementById('tzsel'),b=-1,i;"
         "for(i=0;i<e.options.length;i++){if(+e.options[i].dataset.off===o&&+e.options[i].dataset.dst===s){b=i;break;}}"
         "if(b<0)for(i=0;i<e.options.length;i++){if(+e.options[i].dataset.off===o){b=i;break;}}"
-        "if(b>=0)e.selectedIndex=b;})();</script></body></html>",
-        g_settings.homeLat, g_settings.homeLon, gpsRow.c_str(), ropts.c_str(), topts.c_str(),
-        tzopts.c_str(),
-        g_brightnessDay, iopts.c_str(), g_showSweep ? "checked" : "",
-        g_showAirports ? "checked" : "", g_hideGround ? "checked" : "", maopts.c_str(), g_milOnly ? "checked" : "",
-        tlopts.c_str(), mxopts.c_str(), rotopts.c_str(),
-        g_mRotate ? "checked" : "", g_mShake ? "checked" : "", g_mWake ? "checked" : "", uopts.c_str(),
-        g_volume, g_muted ? "checked" : "", aopts.c_str(), popts.c_str(),
-        g_settings.homeLat, g_settings.homeLon, (g_tz == TZ_STR ? 0 : 1));
-    // snprintf returns the length it WOULD have written; >= BUFSZ means the page was
-    // truncated (mid-<script> → dead JS). Never let that be silent again.
-    if (_pglen < 0 || (size_t)_pglen >= BUFSZ)
-        Serial.printf("[web] settings page TRUNCATED: needed %d bytes, BUFSZ=%u — increase BUFSZ\n",
-                      _pglen, (unsigned)BUFSZ);
-    g_web.send(200, "text/html", buf);
+        "if(b>=0){e.selectedIndex=b;tz(e.value);}})();"
+        "</script></body></html>");
+    g_web.sendContent(script);
+    g_web.sendContent("");   // end chunked response
 }
 
 static void handleSave() {
