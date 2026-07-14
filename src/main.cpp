@@ -651,6 +651,28 @@ static void handleUnits() {   // measurement units preset (live re-render)
     g_web.send(200, "text/plain", "ok");
 }
 
+static void handleTheme() {                       // live theme change from the web (no restart)
+    if (g_web.hasArg("v")) {
+        int t = g_web.arg("v").toInt();
+        if (t < 0) t = 0; if (t >= THEME_COUNT) t = THEME_COUNT - 1;
+        radar::setTheme(t);                        // fires saveTheme cb -> persists + re-tints
+    }
+    g_web.send(200, "text/plain", "ok");
+}
+
+static void handleTz() {                           // live time-zone change (no restart)
+    if (g_web.hasArg("v")) {
+        const int i = g_web.arg("v").toInt();
+        if (i >= 0 && i < TZOPTS_N) {
+            g_tz = TZOPTS[i].tz;                    // g_tz is the active POSIX TZ string
+            setenv("TZ", g_tz.c_str(), 1); tzset(); // apply live; clock picks it up next tick
+            Preferences p; p.begin("capsuleradar", false);
+            p.putString("tz", TZOPTS[i].tz); p.end();
+        }
+    }
+    g_web.send(200, "text/plain", "ok");
+}
+
 static void handleSweep() {   // show/hide the rotating sweep line (live)
     if (g_web.hasArg("v")) {
         g_showSweep = g_web.arg("v").toInt() != 0;
@@ -962,6 +984,8 @@ void setup() {
     g_web.on("/motion", handleMotion);
     g_web.on("/gps", handleGps);
     g_web.on("/units", handleUnits);
+    g_web.on("/theme", handleTheme);
+    g_web.on("/tz", handleTz);
     g_web.on("/update", HTTP_GET, handleUpdatePage);
     g_web.on("/update", HTTP_POST,
         []() {
