@@ -45,9 +45,10 @@ void airports_draw(lv_draw_ctx_t *ctx, lv_color_t color, lv_opa_t opa) {
     lv_draw_arc_dsc_init(&ring);
     ring.color = color; ring.width = 2; ring.opa = opa;
 
-    lv_draw_rect_dsc_t dot;
-    lv_draw_rect_dsc_init(&dot);
-    dot.bg_color = color; dot.bg_opa = opa; dot.radius = LV_RADIUS_CIRCLE;
+    lv_draw_line_dsc_t diamond;                 // small-airport glyph: a hollow diamond
+    lv_draw_line_dsc_init(&diamond);
+    diamond.color = color; diamond.opa = opa; diamond.width = 1;
+    diamond.round_start = 1; diamond.round_end = 1;
 
     lv_draw_label_dsc_t lbl;
     lv_draw_label_dsc_init(&lbl);
@@ -62,9 +63,16 @@ void airports_draw(lv_draw_ctx_t *ctx, lv_color_t color, lv_opa_t opa) {
                 lv_draw_label(ctx, &lbl, &la, ap.iata, NULL);
             }
         } else {
-            lv_area_t d = { (lv_coord_t)(ap.pos.x - 1), (lv_coord_t)(ap.pos.y - 1),
-                            (lv_coord_t)(ap.pos.x + 1), (lv_coord_t)(ap.pos.y + 1) };
-            lv_draw_rect(ctx, &dot, &d);                                    // faint dot
+            // small airport: a tiny hollow diamond (reads as a marker, not a dead pixel)
+            const lv_coord_t r = 3;
+            lv_point_t top = { ap.pos.x, (lv_coord_t)(ap.pos.y - r) };
+            lv_point_t rgt = { (lv_coord_t)(ap.pos.x + r), ap.pos.y };
+            lv_point_t bot = { ap.pos.x, (lv_coord_t)(ap.pos.y + r) };
+            lv_point_t lft = { (lv_coord_t)(ap.pos.x - r), ap.pos.y };
+            lv_draw_line(ctx, &diamond, &top, &rgt);
+            lv_draw_line(ctx, &diamond, &rgt, &bot);
+            lv_draw_line(ctx, &diamond, &bot, &lft);
+            lv_draw_line(ctx, &diamond, &lft, &top);
         }
     }
 }
