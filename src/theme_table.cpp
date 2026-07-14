@@ -38,6 +38,9 @@ const ThemeDesc kThemes[] = {
   {"LCARS", 0xFF9966,0xCC99CC,0xFFCC99,0x9999FF, 0x000000,0x5A4A66, ScopeStyle::kRings, BlipMode::kAltRamp,0, Decoration::kSweep,true, BlipShape::kAuto, false, 0},
   // 17 Browncoat (Firefly — rust rings, gold accents, cream ink; targeting-reticle drawn in grid_draw_cb)
   {"Browncoat", 0xC87A3A,0xD4A050,0xE8D0A8,0x9A7A50, 0x120C06,0x5A4326, ScopeStyle::kRings, BlipMode::kAltRamp,0, Decoration::kSweep,true, BlipShape::kAuto, false, 0},
+  // 18 Reverie (Claude's pick — a warm cosmic daydream: deep-plum sky, gold rings, rose-magenta sweep,
+  //    drifting starfield, warm-cream stars/ink, altitude-scaled blips glowing like embers at depth)
+  {"Reverie", 0xE6B366,0xFF7EC8,0xF5E9D8,0xB79ED0, 0x120A22,0x5A4A78, ScopeStyle::kRings, BlipMode::kAltRamp,0, Decoration::kStarfield,true, BlipShape::kAuto, false, FX_ALTSIZE},
 };
 const int kThemeCount = (int)(sizeof(kThemes)/sizeof(kThemes[0]));
 static_assert((int)(sizeof(kThemes) / sizeof(kThemes[0])) == THEME_COUNT,
