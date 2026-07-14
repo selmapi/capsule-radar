@@ -218,9 +218,13 @@ void ui_apply_theme_accent(lv_color_t c) {
 
 static void radar_press_cb(lv_event_t *e) { (void)e; s_longPressed = false; }
 
-static void radar_longpress_cb(lv_event_t *e) {   // long-press cycles the visual theme
+static void radar_longpress_cb(lv_event_t *e) {   // long-press cycles the theme; side of screen picks direction
     (void)e;
-    radar::cycleTheme();
+    lv_indev_t *indev = lv_indev_get_act();
+    lv_point_t p = { SCREEN_CX, SCREEN_CY };      // default to center → forward, if no indev
+    if (indev) lv_indev_get_point(indev, &p);
+    if (p.x >= SCREEN_CX) radar::cycleTheme();     // right half → next theme
+    else                  radar::cycleThemeBack(); // left half  → previous theme
     s_longPressed = true;
 }
 
