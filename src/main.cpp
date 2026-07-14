@@ -470,7 +470,7 @@ static void handleRoot() {
         ".ck{width:auto;display:inline;margin-right:8px;vertical-align:middle}"
         ".sec{background:#0c1a12!important;color:#1dff86!important;border:1px solid #2a4a39!important}"
         "#map{height:220px;border-radius:10px;margin:6px 0 8px;border:1px solid #2a4a39;z-index:0}"
-        ".card{background:rgba(10,20,14,.85);border:1px solid #1f3a2b;border-radius:14px;margin-bottom:10px;overflow:hidden}"
+        ".card{background:rgba(10,20,14,.85);border:1px solid #1f3a2b;border-radius:14px;padding:0;margin-bottom:10px;overflow:hidden}"
         ".chead{display:flex;align-items:center;gap:9px;padding:13px 15px;cursor:pointer;user-select:none}"
         ".chead .ic{width:20px;text-align:center}"
         ".chead .ti{color:#1dff86;font-size:11px;letter-spacing:1.3px;text-transform:uppercase;flex:1}"
@@ -605,7 +605,7 @@ static void handleRoot() {
         "e=document.getElementById('tzsel'),b=-1,i;"
         "for(i=0;i<e.options.length;i++){if(+e.options[i].dataset.off===o&&+e.options[i].dataset.dst===s){b=i;break;}}"
         "if(b<0)for(i=0;i<e.options.length;i++){if(+e.options[i].dataset.off===o){b=i;break;}}"
-        "if(b>=0){e.selectedIndex=b;tz(e.value);}})();"
+        "if(b>=0&&b!=e.selectedIndex){e.selectedIndex=b;tz(e.value);}})();"
         "</script></body></html>");
     g_web.sendContent(script);
     g_web.sendContent("");   // end chunked response
