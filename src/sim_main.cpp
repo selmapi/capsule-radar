@@ -12,6 +12,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <ctype.h>
+#include "theme_table.h"
 #include "config.h"
 #include "radar_view.h"
 #include "ui.h"
@@ -123,6 +125,7 @@ int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IOLBF, 0);  // line-buffered: logs appear even when piped to a file
     const char *shotPath = (argc >= 3 && strcmp(argv[1], "--shot") == 0) ? argv[2] : NULL;
     const char *gifPath  = (argc >= 3 && strcmp(argv[1], "--gif")  == 0) ? argv[2] : NULL;
+    const char *themesPath = (argc >= 3 && strcmp(argv[1], "--themes") == 0) ? argv[2] : NULL;  // one clean radar shot per theme
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         printf("[sim] SDL_Init failed: %s\n", SDL_GetError());
@@ -274,6 +277,33 @@ int main(int argc, char **argv) {
                     snprintf(path, sizeof(path), "%s-%s.bmp", shotPath, shots[v].name);
                     SDL_SaveBMP(surf, path);
                     SDL_FreeSurface(surf);
+                    printf("[sim] saved %s\n", path);
+                }
+            }
+            radar::setTheme(THEME_PHOSPHOR);
+            run = false;
+        }
+
+        // theme gallery mode (--themes <prefix>): one clean radar shot per theme, no detail card
+        if (themesPath && now - start > 4000) {
+            for (int k = 0; k < 150; ++k) { mock_step(1.0); radar::update(g_mockAcs, g_set); }  // build trails
+            radar::select(-1);                            // clear selection -> no card, clean scope
+            ui_show_view(0);                              // radar view
+            ui_on_data_updated();
+            int ow, oh; SDL_GetRendererOutputSize(s_ren, &ow, &oh);
+            for (int t = 0; t < THEME_COUNT; ++t) {
+                radar::setTheme(t);
+                lv_refr_now(NULL);
+                SDL_RenderClear(s_ren); SDL_RenderCopy(s_ren, s_tex, NULL, NULL);
+                SDL_Surface *surf = SDL_CreateRGBSurfaceWithFormat(0, ow, oh, 32, SDL_PIXELFORMAT_ARGB8888);
+                if (surf) {
+                    SDL_RenderReadPixels(s_ren, NULL, SDL_PIXELFORMAT_ARGB8888, surf->pixels, surf->pitch);
+                    char nm[32]; int j = 0;               // sanitized lowercase-alnum theme name
+                    for (const char *p = radar::kThemes[t].name; *p && j < 31; ++p)
+                        if (isalnum((unsigned char)*p)) nm[j++] = (char)tolower((unsigned char)*p);
+                    nm[j] = 0;
+                    char path[300]; snprintf(path, sizeof(path), "%s-%02d-%s.bmp", themesPath, t, nm);
+                    SDL_SaveBMP(surf, path); SDL_FreeSurface(surf);
                     printf("[sim] saved %s\n", path);
                 }
             }

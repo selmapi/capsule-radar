@@ -1,13 +1,11 @@
 # Capsule Radar 🛩️
 
 <p align="center">
-  <a href="https://socquique.github.io/capsule-radar/"><img src="https://img.shields.io/badge/Flash%20in%20browser-FF6D00?logo=googlechrome&logoColor=white" alt="Flash in browser"></a>
+  <a href="https://selmapi.github.io/capsule-radar/"><img src="https://img.shields.io/badge/Flash%20in%20browser-FF6D00?logo=googlechrome&logoColor=white" alt="Flash in browser"></a>
   <a href="https://makerworld.com/en/models/2907695-capsule-radar-live-flight-radar-desk-gadget"><img src="https://img.shields.io/badge/MakerWorld-3D%20case-1A8917?logo=bambulab&logoColor=white" alt="MakerWorld – 3D case"></a>
   <img src="https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white" alt="Board: ESP32-S3 round AMOLED">
-  <a href="https://github.com/socquique/capsule-radar/releases"><img src="https://img.shields.io/github/v/tag/socquique/capsule-radar?label=firmware&color=7B42BC" alt="Firmware version"></a>
+  <img src="https://img.shields.io/badge/themes-19-7B42BC" alt="19 themes">
   <a href="LICENSE"><img src="https://img.shields.io/badge/code-MIT-2088FF" alt="License: MIT"></a>
-  <img src="https://img.shields.io/github/languages/count/socquique/capsule-radar?label=languages&color=FFC107" alt="Languages">
-  <a href="https://github.com/socquique/capsule-radar/stargazers"><img src="https://img.shields.io/github/stars/socquique/capsule-radar?style=social" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
@@ -15,39 +13,52 @@
 </p>
 <p align="center"><sub>A real flight on the device: callsign, type, altitude/speed, <b>route</b> (Lisbon → Abu Dhabi) and the <b>aircraft photo</b> — all looked up automatically.</sub></p>
 
-A live **ADS-B aircraft radar** for the **Waveshare ESP32-S3-Touch-AMOLED-1.75** — a round 466×466 AMOLED with capacitive touch. It pulls nearby aircraft from a free online feed over WiFi and plots them on a touch radar scope centered on your location, with live flight details and selectable visual skins.
-
-> Visual reference: open [`assets/plane_radar_2.0_mockup.html`](assets/plane_radar_2.0_mockup.html) in a browser.
+A live **ADS-B aircraft radar** for the **Waveshare ESP32-S3-Touch-AMOLED-1.75** — a round 466×466 AMOLED with capacitive touch. It pulls nearby aircraft from a free online feed over WiFi and plots them on a touch radar scope centered on your location, with live flight details and **19 selectable visual themes**.
 
 <p align="center"><img src="docs/img/radar.gif" width="360" alt="Capsule Radar live scope"></p>
 
-| Phosphor | Orb | Amber CRT | Military |
-|:--:|:--:|:--:|:--:|
-| ![Phosphor](docs/img/radar.png) | ![Orb](docs/img/orb.png) | ![Amber](docs/img/amber.png) | ![Military](docs/img/military.png) |
+## Themes
 
-<sub>Captured from the bundled desktop simulator (the device screen is round; the square corners are off-panel).</sub>
+Long-press the screen to cycle (**right half = next, left half = previous**), or pick one on the web page — your choice is remembered across reboots. All 19 render on the same engine; several add their own touches (Mission Control's starfield, CIC's vector plot, Saber's dual sweep, Browncoat's targeting reticle, LCARS chrome, Reverie's drifting stars).
+
+| | | | | |
+|:--:|:--:|:--:|:--:|:--:|
+| ![Phosphor](docs/img/themes/phosphor.png)<br>**Phosphor** | ![Orb](docs/img/themes/orb.png)<br>**Orb** | ![Amber CRT](docs/img/themes/ambercrt.png)<br>**Amber CRT** | ![Military](docs/img/themes/military.png)<br>**Military** | ![Vice](docs/img/themes/vice.png)<br>**Vice** |
+| ![Midnight](docs/img/themes/midnight.png)<br>**Midnight** | ![Silent Running](docs/img/themes/silentrunning.png)<br>**Silent Running** | ![Mission Control](docs/img/themes/missioncontrol.png)<br>**Mission Control** | ![CIC](docs/img/themes/cic.png)<br>**CIC** | ![ClaudeIC](docs/img/themes/claudeic.png)<br>**ClaudeIC** |
+| ![Borderlands](docs/img/themes/borderlands.png)<br>**Borderlands** | ![Aliens](docs/img/themes/aliens.png)<br>**Aliens** | ![Mass Effect](docs/img/themes/masseffect.png)<br>**Mass Effect** | ![Top Gun](docs/img/themes/topgun.png)<br>**Top Gun** | ![Firefox](docs/img/themes/firefox.png)<br>**Firefox** |
+| ![Saber](docs/img/themes/saber.png)<br>**Saber** | ![LCARS](docs/img/themes/lcars.png)<br>**LCARS** | ![Browncoat](docs/img/themes/browncoat.png)<br>**Browncoat** | ![Reverie](docs/img/themes/reverie.png)<br>**Reverie** | |
+
+<sub>Captured from the bundled desktop simulator (`--themes` mode). The device screen is round; the square corners are off-panel.</sub>
 
 ## Features
 
 - **Live traffic** from [airplanes.live](https://airplanes.live) (free, non-commercial; fallback adsb.lol), updated every couple of seconds. Memory-safe streaming parser with a hard aircraft cap.
-- **Four themes** (long-press the screen to cycle, or pick on the web; remembered across reboots):
-  - **Phosphor** — green-on-black radar scope: rings, animated sweep, aircraft glyphs rotated by heading and color-coded by altitude, fading trails, emergency halo.
-  - **Orb** — green gradient + grid scope: the 7 nearest aircraft as yellow orbs emitting waves, off-range traffic as edge arrows pointing its way, orange target rings.
-  - **Amber CRT** and **Military** — the same scope retinted (warm amber / night-vision green).
-- **Touch** (CST9217): tap an aircraft → detail card (callsign, type, altitude, vertical speed, ground speed, distance, heading, squawk, and **origin → destination** looked up from adsbdb, cached in NVS). **Double-tap** to cycle zoom range. Swipe between **Radar / List / Stats** (circular layouts).
-- **Boot splash** + **alert pings** (ES8311 speaker): a soft ping when a new aircraft enters range, an urgent double-beep for emergency/military — volume & mute on the web page.
-- **Smooth motion**: aircraft glyphs glide between polls (interpolated) instead of jumping, using cheap partial redraws.
-- **Top HUD**: WiFi status (amber if the data feed is failing), in-range aircraft count, NTP/RTC clock, **battery %** (charging bolt, red when low), and the date. The Stats view footer shows how to reach the config page (`capsuleradar.local` + IP).
-- **Battery aware** (AXP2101): shows charge level, warns when low, and slows the feed poll rate on battery to save power.
-- **Real-time clock** (PCF85063): keeps the time/date across power loss, so the clock is right even before/without WiFi; re-synced from NTP when online.
-- **Smart brightness**: configurable idle auto-dim (no touch), and **face-down sleep** (QMI8658 IMU — flip it over to turn the screen off).
-- **GPS auto-location** (optional **-G** board variant): the Waveshare `-G` board has an onboard GPS (Quectel LC76G). Turn it on from the web page and the radar **sets its own center point automatically**, with an on-screen **satellite status icon** (amber while acquiring, green once it has a fix). Standard boards simply enter their location manually.
-- **Configuration web page** at `http://capsuleradar.local/` — center point (map picker), display range, theme, **time zone** (auto-detected from your browser), live brightness slider, sound, WiFi reset, and over-the-air firmware update. Settings persist in NVS.
+- **19 themes**, cycled by long-press (right = next, left = back) or the web page, remembered across reboots. Aircraft glyphs rotate by heading and colour-code by altitude, with fading trails, a fade-in on new contacts, and a pulse/red halo on emergencies. Some themes add per-theme flourishes — ATC leader lines, altitude-scaled glyphs, aircraft silhouettes, chevrons, or diamonds.
+- **Touch** (CST9217): tap an aircraft → detail card (callsign, type, altitude, vertical speed, ground speed, distance, heading, squawk, and **origin → destination** looked up from adsbdb, cached in NVS). Swipe between **Radar / List / Stats** (circular layouts).
+- **Motion gestures** (QMI8658 IMU): **shake to refresh**, **auto-rotate** so the scope stays upright whichever side the USB-C is on, **wake on motion**, and **face-down sleep** (flip it over to blank the screen). Each is toggleable on the web page.
+- **Sound & alerts** (ES8311 speaker): a distinct synthesized cue per event — a soft ping for a new contact, a sonar ping for inbound proximity, a low swell for military, a klaxon for emergencies — plus a full-screen red-alert flash. Volume, mute, alert mode and a proximity trigger are on the web page.
+- **Airports** on the scope: larger fields as a labelled ring (IATA), smaller ones as a quiet diamond.
+- **Smooth motion**: glyphs glide between polls (interpolated) using cheap partial redraws instead of jumping.
+- **Top HUD**: WiFi status (amber if the feed is failing), in-range count, NTP/RTC clock, **battery %** (charging bolt, red when low), and the date.
+- **Battery aware** (AXP2101): shows charge, warns when low, and slows the feed poll on battery to save power.
+- **Real-time clock** (PCF85063): keeps time/date across power loss — the clock is right even before WiFi — re-synced from NTP when online.
+- **Smart brightness**: configurable idle auto-dim plus face-down sleep.
+- **GPS auto-location** (optional **-G** board with the Quectel LC76G): turn it on and the radar sets its own centre point, with an on-screen satellite icon (amber acquiring, green on fix). Standard boards enter their location manually.
+- **Configuration web page** at `http://capsuleradar.local/` — a grouped, collapsible page: **Location & Range · Appearance · Traffic & Filters · Motion · Sound & Alerts · Time & System**. Most settings apply **live** (with a "Saved ✓" confirmation) — theme, brightness, filters, sound, motion, time zone — while only the centre point + range need a restart. Includes a map picker, browser-detected time zone, WiFi reset, and over-the-air firmware update. Everything persists in NVS.
 - **First-boot WiFi setup** via a captive portal (`CapsuleRadar-Setup`).
 
 ## Hardware
 
 Waveshare **ESP32-S3-Touch-AMOLED-1.75**: ESP32-S3R8 (8 MB PSRAM, 16 MB flash), **CO5300** AMOLED over QSPI, **CST9217** touch, **QMI8658** IMU, **PCF85063** RTC, **AXP2101** PMIC, **ES8311** audio + speaker, microSD. All pins are in [`src/config.h`](src/config.h) (sourced from the board definition; no guessing).
+
+## Flash from your browser (easiest — no toolchain)
+
+Flash without installing anything using **ESP Web Tools** (Chrome or Edge on desktop):
+
+1. Open the **[web flasher](https://selmapi.github.io/capsule-radar/)**.
+2. Plug the board in with a USB-C **data** cable and click **Install**.
+
+That's it — on first boot, connect your phone to the **`CapsuleRadar-Setup`** WiFi, enter your home network and your location, and real aircraft appear within seconds. (Erasing on install clears saved WiFi/location, so you'll re-run that one-time setup.)
 
 ## Build & flash (PlatformIO)
 
@@ -55,57 +66,54 @@ Waveshare **ESP32-S3-Touch-AMOLED-1.75**: ESP32-S3R8 (8 MB PSRAM, 16 MB flash), 
 pio run -e esp32-s3-amoled-175 -t upload     # build + flash over USB-C
 pio device monitor -b 115200                  # serial log
 ```
-On first flash you may need to hold **BOOT** then tap **RESET**. After flashing, on first boot connect your phone to the **`CapsuleRadar-Setup`** WiFi and enter your home network — real aircraft appear within seconds.
 
-## Flash from your browser (no toolchain)
+On first flash you may need to hold **BOOT** then tap **RESET**. Then follow the same one-time WiFi + location setup as above.
 
-Makers can flash without installing anything using **ESP Web Tools** (Chrome or Edge on desktop):
-
-1. Open the **[web flasher](https://socquique.github.io/capsule-radar/)** (the project's GitHub Pages site).
-2. Plug the board in with a USB-C **data** cable and click **Install**.
-
-The flasher is built and published automatically by GitHub Actions ([`.github/workflows/webflasher.yml`](.github/workflows/webflasher.yml)) on every push to `main` — enable it once in **Settings → Pages → Source = GitHub Actions**. Tagged releases (`git tag v1.0.0 && git push origin v1.0.0`) also attach a ready-to-flash `CapsuleRadar-esp32s3.bin` to a **GitHub Release** via [`release.yml`](.github/workflows/release.yml). To preview the flasher locally:
-
-```bash
-./scripts/build_webflasher.sh                      # build + merge into web/flash/
-python3 -m http.server -d web/flash 8000           # serve (Web Serial works on localhost)
-# open http://localhost:8000
-```
+The browser flasher is built and published automatically by GitHub Actions ([`.github/workflows/webflasher.yml`](.github/workflows/webflasher.yml)) on push to `main` (Pages → Source = GitHub Actions). Tagged releases also attach a ready-to-flash `.bin` to a GitHub Release.
 
 ## Desktop simulator
 
 The whole UI is portable LVGL and runs on your computer (SDL2) — great for iterating without hardware:
+
 ```bash
-pio run -e native -t exec     # opens a 466×466 window (needs SDL2: `brew install sdl2`)
+pio run -e native -t exec           # opens a 466×466 window (needs SDL2: brew install sdl2)
 ```
-Mouse = touch · `T` = switch theme · close the window to quit.
+
+Mouse = touch · `T` = cycle theme · close the window to quit.
+
+It also has two headless capture modes (used for this README's gallery):
+
+```bash
+.pio/build/native/program --themes docs/img/themes/gal   # one clean shot per theme
+.pio/build/native/program --shot   docs/img/shot         # radar / list / stats views
+```
 
 ## Configuration
 
-Browse to `http://capsuleradar.local/` (or the device IP) on the same WiFi to set the **center lat/lon**, **display range**, **theme** and **brightness**, or to **reset WiFi**. Saving restarts the device to apply.
+Browse to `http://capsuleradar.local/` (or the device IP) on the same WiFi. Change the theme, brightness, filters, sound, motion and time zone and they apply **immediately**; the centre point (map picker) and display range save-and-restart. WiFi reset and OTA firmware update are at the bottom.
 
 ## Repo layout
 
 ```
 src/
-  config.h           pins + tunables (Dénia, Spain by default)
-  main.cpp           tasks, WiFi/NTP, web config, brightness/IMU glue
+  config.h           pins + tunables (Dénia, Spain by default) + FW_VERSION
+  main.cpp           tasks, WiFi/NTP, chunked web config page, brightness/IMU glue
   display.*          CO5300 (Arduino_GFX) + LVGL bring-up
-  radar_view.*       the radar scope, aircraft, themes
-  ui.*               views (radar/list/stats) + detail card + HUD
-  touch_cst9217.*    capacitive touch driver
-  imu_qmi8658.*      accelerometer (face-down sleep)
-  battery.*          AXP2101 battery gauge
-  rtc_pcf85063.*     PCF85063 real-time clock
+  radar_view.*       the radar scope, aircraft, sweep, blip FX
+  theme_table.*      the 19 themes (descriptor table)
+  ui.*               views (radar/list/stats) + detail card + HUD + touch handlers
+  motion.*           IMU gestures (shake / auto-rotate / wake / face-down)
+  audio.*            ES8311 alert-sound synthesis
+  airports.*         airport markers (ring + IATA / diamond)
+  touch_cst9217.*  imu_qmi8658.*  battery.*  rtc_pcf85063.*   device drivers
   adsb_client.*      airplanes.live fetch + parse
-  route*.* route.*   origin→destination lookup (adsbdb)
-  sim_main.cpp       native SDL simulator (not flashed)
+  route*.*           origin→destination lookup (adsbdb)
+  sim_main.cpp       native SDL simulator (not flashed; --themes / --shot capture)
 include/lv_conf.h    LVGL config (v8)
-web/flash/           browser web-flasher (ESP Web Tools) for makers
-scripts/             build_webflasher.sh (merge firmware -> single .bin)
-docs/                hardware / data-source / architecture notes
+web/flash/           browser web-flasher (ESP Web Tools, self-hosted for locked-down networks)
+docs/                hardware / data-source / architecture notes + img/
 ```
 
-## Data & license
+## Credits, data & license
 
-**Firmware / code: [MIT](LICENSE)** — fork and build on it freely (keep the notice). Aircraft data: **airplanes.live** (free, **non-commercial / educational** — exactly this project; be polite with request cadence). Routes: **adsbdb.com** (free). Personal/hobby project. The 3D-printed enclosure is published on [MakerWorld](https://makerworld.com/en/models/2907695-capsule-radar-live-flight-radar-desk-gadget) (enclosure + this firmware).
+Based on the original **[Capsule Radar](https://github.com/socquique/capsule-radar)** by socquique — this is a personal fork that adds the extra themes, motion gestures, sound, and the redesigned config page. **Firmware / code: [MIT](LICENSE)** — fork and build on it freely (keep the notice). Aircraft data: **airplanes.live** (free, **non-commercial / educational** — exactly this project; be polite with request cadence). Routes: **adsbdb.com** (free). The 3D-printed enclosure is on [MakerWorld](https://makerworld.com/en/models/2907695-capsule-radar-live-flight-radar-desk-gadget).
