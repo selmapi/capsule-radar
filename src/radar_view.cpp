@@ -54,6 +54,7 @@
 #define SWEEP_TRAIL_DEG   38.0f
 #define SWEEP_TRAIL_STEPS 20
 #define SWEEP_TRAIL_OPA   72
+#define SABER_BLADE2_RATE 0.78f   // red blade angular speed relative to blue (≠1 so clashes drift)
 
 // ---- aircraft / flow / orb config ----
 #define TRAIL_MAX         7
@@ -95,6 +96,8 @@ static int        s_flowGenMax      = 14;          // ...and an age cap in polls
 static lv_timer_t *s_timer    = nullptr;
 static float       s_sweepDeg = 0.0f;
 static float       s_prevSweepDeg = 0.0f;
+static float       s_sweepDeg2 = 180.0f;   // Saber red blade (counter-rotating); starts opposite the blue
+static float       s_prevSweepDeg2 = 180.0f;
 static float       s_wavePhase = 0.0f;
 static uint32_t    s_lastUpdateMs = 0;       // smooth-motion: cadence + animation clock
 static uint32_t    s_animStartMs  = 0;
@@ -331,8 +334,8 @@ static void grid_draw_cb(lv_event_t *e) {
         lv_draw_rect_dsc_t bx; lv_draw_rect_dsc_init(&bx);
         bx.bg_opa = LV_OPA_TRANSP;
         bx.border_color = s_cLead; bx.border_width = 2; bx.border_opa = 220;
-        lv_area_t box = { (lv_coord_t)(s_cx - 16), (lv_coord_t)(s_cy - 16),
-                          (lv_coord_t)(s_cx + 16), (lv_coord_t)(s_cy + 16) };
+        lv_area_t box = { (lv_coord_t)(s_cx - 32), (lv_coord_t)(s_cy - 32),
+                          (lv_coord_t)(s_cx + 32), (lv_coord_t)(s_cy + 32) };
         lv_draw_rect(d, &bx, &box);
 
         // four L-brackets just inside the outer ring (NE/SE/SW/NW), rust
@@ -354,21 +357,20 @@ static void grid_draw_cb(lv_event_t *e) {
 }
 
 // =============================== sweep =======================================
-static void sweep_draw_cb(lv_event_t *e) {
-    if (orb() || !s_desc->sweep) return;
-    lv_draw_ctx_t *dctx = lv_event_get_draw_ctx(e);
+static void draw_sweep_arm(lv_draw_ctx_t *dctx, float deg, int dir,
+                           lv_color_t trailCol, lv_color_t leadCol) {
     const lv_point_t center = { s_cx, s_cy };
     const float R = (float)RADAR_R_OUTER_PX;
 
     lv_draw_line_dsc_t ld;
     lv_draw_line_dsc_init(&ld);
-    ld.color = s_cRing;
+    ld.color = trailCol;
     ld.width = 5;
     ld.round_start = 1;
     ld.round_end = 1;
     for (int i = SWEEP_TRAIL_STEPS; i >= 1; --i) {
         const float frac = 1.0f - (float)i / (float)SWEEP_TRAIL_STEPS;
-        const float ang  = s_sweepDeg - (float)i * (SWEEP_TRAIL_DEG / (float)SWEEP_TRAIL_STEPS);
+        const float ang  = deg - (float)dir * (float)i * (SWEEP_TRAIL_DEG / (float)SWEEP_TRAIL_STEPS);
         ld.opa = (lv_opa_t)(frac * frac * (float)SWEEP_TRAIL_OPA);
         if (ld.opa < 2) continue;
         lv_point_t p2 = rim_point(ang, R);
@@ -376,20 +378,35 @@ static void sweep_draw_cb(lv_event_t *e) {
     }
     lv_draw_line_dsc_t le;
     lv_draw_line_dsc_init(&le);
-    le.color = s_cLead;
+    le.color = leadCol;
     le.width = 2;
     le.opa = 217;
     le.round_start = 1;
     le.round_end = 1;
-    lv_point_t lead = rim_point(s_sweepDeg, R);
+    lv_point_t lead = rim_point(deg, R);
     lv_draw_line(dctx, &le, &center, &lead);
 }
 
-static void wedge_bbox(float deg, lv_area_t *out) {
+static void sweep_draw_cb(lv_event_t *e) {
+    if (orb() || !s_desc->sweep) return;
+    lv_draw_ctx_t *dctx = lv_event_get_draw_ctx(e);
+
+    if (s_theme == THEME_SABER) {
+        // Duel: blue blade CW, red blade CCW — both glow in their own colour.
+        const lv_color_t blue = lv_color_hex(0x2A6AFF);   // = kThemes[THEME_SABER].lead
+        const lv_color_t red  = lv_color_hex(0xFF2A2A);   // saber red (matches emergency halo)
+        draw_sweep_arm(dctx, s_sweepDeg,  +1, blue, blue);
+        draw_sweep_arm(dctx, s_sweepDeg2, -1, red,  red);
+        return;
+    }
+    draw_sweep_arm(dctx, s_sweepDeg, +1, s_cRing, s_cLead);
+}
+
+static void wedge_bbox(float deg, int dir, lv_area_t *out) {
     lv_coord_t minx = s_cx, maxx = s_cx, miny = s_cy, maxy = s_cy;
     const int steps = 10;
     for (int i = 0; i <= steps; ++i) {
-        const float a = deg - SWEEP_TRAIL_DEG * (float)i / (float)steps;
+        const float a = deg - (float)dir * SWEEP_TRAIL_DEG * (float)i / (float)steps;
         const lv_point_t p = rim_point(a, (float)RADAR_R_OUTER_PX);
         if (p.x < minx) minx = p.x;
         if (p.x > maxx) maxx = p.x;
@@ -475,15 +492,31 @@ static void sweep_timer_cb(lv_timer_t *t) {
     s_prevSweepDeg = s_sweepDeg;
     s_sweepDeg += 360.0f * (float)SWEEP_FRAME_MS / (float)SWEEP_PERIOD_MS;
     if (s_sweepDeg >= 360.0f) s_sweepDeg -= 360.0f;
+    const bool saberDuel = (s_theme == THEME_SABER);
+    if (saberDuel) {
+        s_prevSweepDeg2 = s_sweepDeg2;
+        s_sweepDeg2 -= 360.0f * (float)SWEEP_FRAME_MS / (float)SWEEP_PERIOD_MS * SABER_BLADE2_RATE;
+        if (s_sweepDeg2 < 0.0f) s_sweepDeg2 += 360.0f;
+    }
     if (!s_sweep) return;
     lv_area_t a, b, area;
-    wedge_bbox(s_prevSweepDeg, &a);
-    wedge_bbox(s_sweepDeg, &b);
+    wedge_bbox(s_prevSweepDeg, +1, &a);
+    wedge_bbox(s_sweepDeg, +1, &b);
     area.x1 = LV_MIN(a.x1, b.x1);
     area.y1 = LV_MIN(a.y1, b.y1);
     area.x2 = LV_MAX(a.x2, b.x2);
     area.y2 = LV_MAX(a.y2, b.y2);
     lv_obj_invalidate_area(s_sweep, &area);
+    if (saberDuel) {
+        lv_area_t a2, b2, area2;
+        wedge_bbox(s_prevSweepDeg2, -1, &a2);
+        wedge_bbox(s_sweepDeg2, -1, &b2);
+        area2.x1 = LV_MIN(a2.x1, b2.x1);
+        area2.y1 = LV_MIN(a2.y1, b2.y1);
+        area2.x2 = LV_MAX(a2.x2, b2.x2);
+        area2.y2 = LV_MAX(a2.y2, b2.y2);
+        lv_obj_invalidate_area(s_sweep, &area2);
+    }
 }
 
 // =============================== aircraft ====================================
@@ -1038,6 +1071,8 @@ void init(void *lv_parent) {
 
     s_sweepDeg = 0.0f;
     s_prevSweepDeg = 0.0f;
+    s_sweepDeg2 = 180.0f;
+    s_prevSweepDeg2 = 180.0f;
     if (!s_timer) s_timer = lv_timer_create(sweep_timer_cb, SWEEP_FRAME_MS, nullptr);
 
     // ClaudeIC-only mascot badge (built from styled rects; shown/hidden in setTheme)
