@@ -4,11 +4,13 @@
 #include "radar_view.h"
 #include "route.h"
 #include "photo.h"
+#include "weather.h"
 #include "config.h"
 #include <lvgl.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 
 #define UI_GREEN lv_color_hex(0x1DFF86)
 #define UI_INK   lv_color_hex(0xEAFFF3)
@@ -19,6 +21,8 @@
 
 static lv_obj_t *s_tv = nullptr;
 static lv_obj_t *s_tileRadar = nullptr, *s_tileList = nullptr, *s_tileStats = nullptr;
+static lv_obj_t *s_tileWx = nullptr;
+static lv_obj_t *s_wxTitle = nullptr, *s_wxTemp = nullptr, *s_wxCond = nullptr, *s_wxPill = nullptr;
 static lv_obj_t *s_card = nullptr, *s_cardTitle = nullptr, *s_cardL = nullptr, *s_cardR = nullptr;
 static lv_obj_t *s_cardRoute = nullptr;
 static lv_obj_t *s_photo = nullptr, *s_photoCredit = nullptr;   // aircraft photo above the card
@@ -30,6 +34,12 @@ static lv_obj_t *s_statsLbl = nullptr;
 static lv_obj_t *s_statsNet = nullptr;
 static lv_obj_t *s_hudGps   = nullptr;   // HUD satellite icon (hidden unless GPS auto-location is on)
 static lv_obj_t *s_statsGps = nullptr;   // Stats view GPS status line
+static lv_obj_t *s_hudWx    = nullptr;   // global raincloud icon (lv_layer_top)
+
+// Forward declaration so ui_set_weather (defined near ui_set_gps) compiles
+// regardless of where ui_weather_tile_refresh (defined near the Weather tile
+// widgets, further down) ends up relative to it.
+static void ui_weather_tile_refresh(const char *summary);
 
 // --------------------------------------------------------------------- units
 // 0 = Aviation (ft, kt, km) · 1 = Metric (m, km/h, km) · 2 = Imperial (ft, mph, mi).
@@ -311,6 +321,44 @@ void ui_set_gps(int state, int sats) {
     }
 }
 
+// Refresh the Weather tile's numbers + alert pill from weather::state(); summary is
+// the plain-language string (from Open-Meteo) used both on the pill and the condition line.
+static void ui_weather_tile_refresh(const char *summary) {
+    const weather::State &w = weather::state();
+    if (s_wxTemp && w.valid) { char b[16]; snprintf(b, sizeof(b), "%d\xC2\xB0", (int)lroundf(w.tempC)); lv_label_set_text(s_wxTemp, b); }
+    if (s_wxCond) {
+        char b[80];
+        if (w.valid) snprintf(b, sizeof(b), "%s\nwind %d km/h \xC2\xB7 %d%%", summary ? summary : "", (int)lroundf(w.windKmh), w.humidity);
+        else         snprintf(b, sizeof(b), "Waiting for data\xE2\x80\xA6");
+        lv_label_set_text(s_wxCond, b);
+    }
+    if (s_wxPill) {
+        if (w.alert >= 1 && summary) {
+            char b[64]; snprintf(b, sizeof(b), "%s %s", w.alert >= 2 ? "\xE2\x9B\x88" : "\xF0\x9F\x8C\xA7", summary);
+            lv_label_set_text(s_wxPill, b);
+            lv_obj_set_style_bg_color(s_wxPill, lv_color_hex(w.alert >= 2 ? 0x2a0808 : 0x2a1e08), 0);
+            lv_obj_set_style_text_color(s_wxPill, lv_color_hex(w.alert >= 2 ? 0xff6a4a : 0xffc86a), 0);
+            lv_obj_clear_flag(s_wxPill, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(s_wxPill, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+// HUD raincloud icon (global, all screens). alert: 0=hide, 1=rain (amber), 2=storm (red).
+void ui_set_weather(int alert, const char *summary) {
+    if (s_hudWx) {
+        if (alert <= 0) {
+            lv_obj_add_flag(s_hudWx, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_clear_flag(s_hudWx, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_text_color(s_hudWx,
+                lv_color_hex(alert >= 2 ? 0xFF4030 : 0xFFB23C), 0);   // storm red / rain amber
+        }
+    }
+    ui_weather_tile_refresh(summary);
+}
+
 // Rebuild the scrollable contact list. Costly (deletes+recreates LVGL buttons), so we
 // only call it when the list tile is actually visible — not on every 2 s poll.
 static void build_list(void) {
@@ -459,7 +507,7 @@ static void build_card(void) {
 }
 
 void ui_show_view(int idx) {
-    if (s_tv && idx >= 0 && idx <= 2) lv_obj_set_tile_id(s_tv, (uint32_t)idx, 0, LV_ANIM_OFF);
+    if (s_tv && idx >= 0 && idx <= 3) lv_obj_set_tile_id(s_tv, (uint32_t)idx, 0, LV_ANIM_OFF);
 }
 
 // ------------------------------------------------------------------- splash
@@ -539,7 +587,35 @@ void ui_create(void) {
 
     s_tileRadar = lv_tileview_add_tile(s_tv, 0, 0, LV_DIR_RIGHT);
     s_tileList  = lv_tileview_add_tile(s_tv, 1, 0, LV_DIR_HOR);
-    s_tileStats = lv_tileview_add_tile(s_tv, 2, 0, LV_DIR_LEFT);
+    s_tileStats = lv_tileview_add_tile(s_tv, 2, 0, LV_DIR_HOR);   // was LV_DIR_LEFT — allow swipe to Weather
+    s_tileWx    = lv_tileview_add_tile(s_tv, 3, 0, LV_DIR_LEFT);
+    // Weather tile widgets (Phase A: text; Phase B adds the precip loop canvas)
+    s_wxTitle = lv_label_create(s_tileWx);
+    lv_obj_set_style_text_color(s_wxTitle, lv_color_hex(0x9affc8), 0);
+    lv_obj_set_style_text_font(s_wxTitle, &lv_font_montserrat_16, 0);
+    lv_label_set_text(s_wxTitle, "WEATHER");
+    lv_obj_align(s_wxTitle, LV_ALIGN_TOP_MID, 0, 60);
+
+    s_wxTemp = lv_label_create(s_tileWx);
+    lv_obj_set_style_text_font(s_wxTemp, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_color(s_wxTemp, lv_color_hex(0xeafff3), 0);
+    lv_label_set_text(s_wxTemp, "--\xC2\xB0");
+    lv_obj_align(s_wxTemp, LV_ALIGN_CENTER, 0, -30);
+
+    s_wxCond = lv_label_create(s_tileWx);
+    lv_obj_set_style_text_color(s_wxCond, lv_color_hex(0x9affc8), 0);
+    lv_obj_set_style_text_align(s_wxCond, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(s_wxCond, "No data yet");
+    lv_obj_align(s_wxCond, LV_ALIGN_CENTER, 0, 12);
+
+    s_wxPill = lv_label_create(s_tileWx);
+    lv_obj_set_style_bg_color(s_wxPill, lv_color_hex(0x2a0808), 0);
+    lv_obj_set_style_bg_opa(s_wxPill, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(s_wxPill, 8, 0);
+    lv_obj_set_style_radius(s_wxPill, 16, 0);
+    lv_obj_set_style_text_color(s_wxPill, lv_color_hex(0xff8a6a), 0);
+    lv_obj_align(s_wxPill, LV_ALIGN_CENTER, 0, 70);
+    lv_obj_add_flag(s_wxPill, LV_OBJ_FLAG_HIDDEN);
     // Rebuild the list/stats with the latest data the moment they slide into view
     // (between polls they'd otherwise show whatever was there when last visible).
     lv_obj_add_event_cb(s_tv, [](lv_event_t *) { refresh_active_tile(); }, LV_EVENT_VALUE_CHANGED, nullptr);
@@ -664,6 +740,15 @@ void ui_create(void) {
     lv_obj_align(ver, LV_ALIGN_CENTER, 0, 170);
 
     lv_obj_set_tile_id(s_tv, 0, 0, LV_ANIM_OFF);
+
+    // Global HUD raincloud icon, on the top layer so it floats over every tile
+    // (unlike s_hudGps etc., which live on s_tileRadar only).
+    s_hudWx = lv_label_create(lv_layer_top());
+    lv_obj_set_style_text_font(s_hudWx, &lv_font_montserrat_16, 0);
+    lv_label_set_text(s_hudWx, LV_SYMBOL_WARNING);   // stand-in glyph; amber/red tint conveys severity
+    lv_obj_align(s_hudWx, LV_ALIGN_TOP_RIGHT, -16, 14);
+    lv_obj_add_flag(s_hudWx, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(s_hudWx, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
 
     ui_splash_show();   // branded boot splash on top (auto-fades)
 }
