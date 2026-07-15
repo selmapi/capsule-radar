@@ -11,6 +11,8 @@
 #include "route_client.h"
 #include "photo.h"
 #include "photo_client.h"
+#include "weather.h"
+#include "weather_client.h"
 #include "radar_view.h"
 #include "theme_table.h"
 #include "ui.h"
@@ -67,6 +69,8 @@ static bool                  g_mShake  = true;                       // shake-to
 static bool                  g_mRotate = true;                       // IMU auto-rotate enabled (web/NVS)
 static bool                  g_mWake   = true;                       // wake-on-motion enabled (web/NVS)
 static volatile bool         g_forcePoll = false;                    // shake -> ask adsb_task to poll now
+static bool                  g_wxEnabled = false;                    // Weather tile + alerts (off by default — POC) (web/NVS)
+static uint8_t               g_wxLastAlert = 0;                      // for onset detection (no repeated sound)
 
 // Web-selectable time zones (label + POSIX TZ). The <option> value is the index; the save
 // handler maps it back to the POSIX string stored in NVS and used by configTzTime at boot.
@@ -99,6 +103,7 @@ static void adsb_task(void*) {
     std::vector<Aircraft> fresh;
     bool wasConnected = false;
     uint32_t lastPoll = 0;
+    uint32_t lastWx = 0;
     uint32_t lastFeedOk = millis();          // self-heal: time of last good (or no-WiFi) poll
     for (;;) {
         const bool conn = (WiFi.status() == WL_CONNECTED);
@@ -176,6 +181,11 @@ static void adsb_task(void*) {
             }
             char wantHex[10];
             if (photo_pending(wantHex, sizeof(wantHex))) photo_fetch(wantHex);
+
+            if (g_wxEnabled && (lastWx == 0 || millis() - lastWx >= 300000)) {   // every 5 min
+                lastWx = millis();
+                weather_client_poll(g_settings.homeLat, g_settings.homeLon);
+            }
         }
         vTaskDelay(pdMS_TO_TICKS(250));
     }
@@ -521,7 +531,8 @@ static void handleRoot() {
               "<label>Minimum altitude</label><select onchange='ma(this.value)'>") + maopts +
             F("</select><label>Aircraft trails</label><select onchange='tl(this.value)'>") + tlopts +
             F("</select><label>Max aircraft on screen</label><select onchange='mx(this.value)'>") + mxopts +
-            F("</select>");
+            F("</select><label><input type=checkbox class=ck ") + (g_wxEnabled ? "checked" : "") +
+            F(" onchange='wx(this.checked)'>Weather tile + storm alerts</label>");
         sendCard("\xE2\x9C\x88", "Traffic &amp; Filters", hintTraffic, inner, false);
     }
     {
@@ -581,6 +592,7 @@ static void handleRoot() {
         "function tst(){fetch('/vol?test=1');}"
         "function d(v){fetch('/idle?v='+v+'&save=1').then(toast);}"
         "function sw(c){fetch('/sweep?v='+(c?1:0)+'&save=1').then(toast);}"
+        "function wx(c){fetch('/weather?v='+(c?1:0)+'&save=1').then(toast);}"
         "function ap(c){fetch('/airports?v='+(c?1:0)+'&save=1').then(toast);}"
         "function hg(c){fetch('/ground?v='+(c?1:0)+'&save=1').then(toast);}"
         "function ma(v){fetch('/altmin?v='+v+'&save=1').then(toast);}"
@@ -755,6 +767,20 @@ static void handleSweep() {   // show/hide the rotating sweep line (live)
             Preferences p;
             p.begin("capsuleradar", false);
             p.putBool("sweep", g_showSweep);
+            p.end();
+        }
+    }
+    g_web.send(200, "text/plain", "ok");
+}
+
+static void handleWeather() {   // show/hide the Weather tile + storm alerts (live)
+    if (g_web.hasArg("v")) {
+        g_wxEnabled = g_web.arg("v").toInt() != 0;
+        if (!g_wxEnabled) ui_set_weather(0, "");
+        if (g_web.hasArg("save")) {
+            Preferences p;
+            p.begin("capsuleradar", false);
+            p.putBool("wx", g_wxEnabled);
             p.end();
         }
     }
@@ -965,6 +991,7 @@ void setup() {
         g_minAltFt = p.getInt("minalt", 0);
         g_milOnly = p.getBool("milonly", false);
         g_rotation = p.getInt("rot", 0);
+        g_wxEnabled = p.getBool("wx", false);
         p.end();
         radar::setTheme(t);
         ui_apply_theme_accent(radar::chromeColor());   // zoom/range box matches the restored theme at boot
@@ -1048,6 +1075,7 @@ void setup() {
     g_web.on("/testsound", handleTestSound);
     g_web.on("/idle", handleIdle);
     g_web.on("/sweep", handleSweep);
+    g_web.on("/weather", handleWeather);
     g_web.on("/airports", handleAirports);
     g_web.on("/ground", handleGround);
     g_web.on("/altmin", handleAltMin);
@@ -1167,6 +1195,18 @@ void loop() {
         // GPS HUD/Stats: 0 = off/no module (hidden), 1 = acquiring, 2 = fix
         const int gpsState = (!g_useGps || !gps_present()) ? 0 : (gps_has_fix() ? 2 : 1);
         ui_set_gps(gpsState, gps_satellites());
+        if (g_wxEnabled) {
+            const weather::State &w = weather::state();
+            ui_set_weather(w.alert, w.summary);
+            // Onset-only, same alertMode gating checkAudioEvents uses for emergency cues
+            // (>=1); audio_play() itself already no-ops when muted (see audio.cpp s_muted).
+            if (w.valid && w.alert > g_wxLastAlert && w.alert >= weather::WX_RAIN && g_alertMode >= 1) {
+                audio_play(w.alert >= weather::WX_STORM ? AUDIO_EMERGENCY : AUDIO_INBOUND);  // onset only
+            }
+            g_wxLastAlert = w.alert;
+        } else {
+            ui_set_weather(0, "");   // keep icon hidden when disabled
+        }
         // once NTP has a real fix, persist it to the RTC (core 1 only)
         if (!g_rtcSynced && time(nullptr) > 1700000000L) {
             time_t now = time(nullptr);
