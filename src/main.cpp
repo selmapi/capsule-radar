@@ -774,6 +774,24 @@ static void handleSweep() {   // show/hide the rotating sweep line (live)
     g_web.send(200, "text/plain", "ok");
 }
 
+// Diagnostic dump for the weather path (serial is unreadable over this board's USB-CDC).
+// curl http://capsuleradar.local/wx
+static void handleWx() {
+    const weather::State w = weather::state();
+    char b[420];
+    snprintf(b, sizeof(b),
+        "enabled=%d\nstatus=%s\nvalid=%d\ntempC=%.1f\ncode=%d\nwindKmh=%.1f\nhum=%d\n"
+        "alert=%d\netaMin=%d\nsummary=%s\nupdatedMs=%u\nnowMs=%u\n"
+        "homeLat=%.5f\nhomeLon=%.5f\nheapFree=%u\nlargestInternal=%u\n",
+        (int)g_wxEnabled, weather_client_last_status(), (int)w.valid, w.tempC, w.code,
+        w.windKmh, w.humidity, (int)w.alert, w.etaMin, w.summary,
+        (unsigned)w.updatedMs, (unsigned)lv_tick_get(),
+        g_settings.homeLat, g_settings.homeLon,
+        (unsigned)ESP.getFreeHeap(),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+    g_web.send(200, "text/plain", b);
+}
+
 static void handleWeather() {   // show/hide the Weather tile + storm alerts (live)
     if (g_web.hasArg("v")) {
         g_wxEnabled = g_web.arg("v").toInt() != 0;
@@ -1078,6 +1096,7 @@ void setup() {
     g_web.on("/idle", handleIdle);
     g_web.on("/sweep", handleSweep);
     g_web.on("/weather", handleWeather);
+    g_web.on("/wx", handleWx);
     g_web.on("/airports", handleAirports);
     g_web.on("/ground", handleGround);
     g_web.on("/altmin", handleAltMin);
