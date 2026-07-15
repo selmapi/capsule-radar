@@ -327,11 +327,25 @@ void ui_set_gps(int state, int sats) {
 // the plain-language string (from Open-Meteo) used both on the pill and the condition line.
 static void ui_weather_tile_refresh(const char *summary) {
     const weather::State &w = weather::state();
-    if (s_wxTemp && w.valid) { char b[16]; snprintf(b, sizeof(b), "%d\xC2\xB0", (int)lroundf(w.tempC)); lv_label_set_text(s_wxTemp, b); }
+    // Follow the user's Units setting like the rest of the UI. Open-Meteo gives °C + km/h;
+    // Metric shows those as-is, Aviation/Imperial show °F (aviation convention is °C, but
+    // this is a US desk gadget — Fahrenheit is what's wanted). Wind reuses fmt_spd (takes kt).
+    const bool metric = (s_units == 1);
+    if (s_wxTemp && w.valid) {
+        char b[16];
+        const float t = metric ? w.tempC : (w.tempC * 9.0f / 5.0f + 32.0f);
+        snprintf(b, sizeof(b), "%d\xC2\xB0%s", (int)lroundf(t), metric ? "C" : "F");
+        lv_label_set_text(s_wxTemp, b);
+    }
     if (s_wxCond) {
-        char b[80];
-        if (w.valid) snprintf(b, sizeof(b), "%s\nwind %d km/h \xC2\xB7 %d%%", summary ? summary : "", (int)lroundf(w.windKmh), w.humidity);
-        else         snprintf(b, sizeof(b), "Waiting for data\xE2\x80\xA6");
+        char b[96];
+        if (w.valid) {
+            char ws[16];
+            fmt_spd(ws, sizeof(ws), w.windKmh / 1.852f);   // km/h -> kt, then formatted per units
+            snprintf(b, sizeof(b), "%s\nwind %s \xC2\xB7 %d%%", summary ? summary : "", ws, w.humidity);
+        } else {
+            snprintf(b, sizeof(b), "Waiting for data\xE2\x80\xA6");
+        }
         lv_label_set_text(s_wxCond, b);
     }
     if (s_wxPill) {
