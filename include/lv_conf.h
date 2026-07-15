@@ -59,6 +59,15 @@
 #define LV_SHADOW_CACHE_SIZE 0
 #define LV_CIRCLE_CACHE_SIZE 4
 #define LV_DISP_ROT_MAX_BUF (10 * 1024)
+/* Pinned explicitly (Opus review, wxradar): the Weather tile's precip loop
+   (ui.cpp) re-points ONE static lv_img_dsc_t (s_wxDsc) at a different PSRAM
+   buffer every animation tick and calls lv_img_set_src() again each time. That
+   only works because LVGL 8.4's *default* image cache size is 0 bytes, so
+   every lv_img_set_src() re-decodes/re-reads instead of cache-hitting on the
+   descriptor's pointer identity. If a future LVGL bump ever changes that
+   default, the cache would key on &s_wxDsc, cache-hit on frame 1, and freeze
+   the animation there. Pin it at 0 so that can't happen silently. */
+#define LV_IMG_CACHE_DEF_SIZE 0
 
 /*==================
    LOG (serial)
