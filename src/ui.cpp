@@ -5,6 +5,7 @@
 #include "route.h"
 #include "photo.h"
 #include "weather.h"
+#include "wxradar.h"
 #include "config.h"
 #include <lvgl.h>
 #include <stdio.h>
@@ -23,6 +24,9 @@ static lv_obj_t *s_tv = nullptr;
 static lv_obj_t *s_tileRadar = nullptr, *s_tileList = nullptr, *s_tileStats = nullptr;
 static lv_obj_t *s_tileWx = nullptr;
 static lv_obj_t *s_wxTitle = nullptr, *s_wxTemp = nullptr, *s_wxCond = nullptr, *s_wxPill = nullptr;
+static lv_obj_t  *s_wxImg = nullptr;      // radar frame image
+static lv_timer_t *s_wxTimer = nullptr;   // loop animator
+static lv_img_dsc_t s_wxDsc;              // descriptor pointing at the active frame
 static lv_obj_t *s_card = nullptr, *s_cardTitle = nullptr, *s_cardL = nullptr, *s_cardR = nullptr;
 static lv_obj_t *s_cardRoute = nullptr;
 static lv_obj_t *s_photo = nullptr, *s_photoCredit = nullptr;   // aircraft photo above the card
@@ -42,6 +46,7 @@ void ui_set_weather_enabled(bool en) { s_wxEnabled = en; }
 // regardless of where ui_weather_tile_refresh (defined near the Weather tile
 // widgets, further down) ends up relative to it.
 static void ui_weather_tile_refresh(const char *summary);
+static void ui_weather_frame_refresh();
 
 // --------------------------------------------------------------------- units
 // 0 = Aviation (ft, kt, km) · 1 = Metric (m, km/h, km) · 2 = Imperial (ft, mph, mi).
@@ -361,6 +366,22 @@ static void ui_weather_tile_refresh(const char *summary) {
     }
 }
 
+// Point the image at the active cached frame (no copy — the descriptor references PSRAM).
+static void ui_weather_frame_refresh() {
+    wxradar::Frames &F = wxradar::frames();
+    if (!s_wxImg) return;
+    uint16_t *p = (F.play >= 0 && F.play < wxradar::FRAMES) ? F.px[F.play] : nullptr;
+    if (!p) { lv_obj_add_flag(s_wxImg, LV_OBJ_FLAG_HIDDEN); return; }
+    s_wxDsc.header.cf   = LV_IMG_CF_TRUE_COLOR;
+    s_wxDsc.header.w    = wxradar::FRAME_PX;
+    s_wxDsc.header.h    = wxradar::FRAME_PX;
+    s_wxDsc.data_size   = (uint32_t)wxradar::FRAME_PX * wxradar::FRAME_PX * 2;
+    s_wxDsc.data        = (const uint8_t *)p;
+    lv_img_set_src(s_wxImg, &s_wxDsc);
+    lv_obj_clear_flag(s_wxImg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_invalidate(s_wxImg);
+}
+
 // HUD raincloud icon (global, all screens). alert: 0=hide, 1=rain (amber), 2=storm (red).
 void ui_set_weather(int alert, const char *summary) {
     if (s_hudWx) {
@@ -637,6 +658,22 @@ void ui_create(void) {
         lv_obj_set_style_text_color(s_wxPill, lv_color_hex(0xff8a6a), 0);
         lv_obj_align(s_wxPill, LV_ALIGN_CENTER, 0, 70);
         lv_obj_add_flag(s_wxPill, LV_OBJ_FLAG_HIDDEN);
+
+        s_wxImg = lv_img_create(s_tileWx);
+        lv_obj_align(s_wxImg, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_move_background(s_wxImg);
+        lv_obj_add_flag(s_wxImg, LV_OBJ_FLAG_HIDDEN);
+        s_wxTimer = lv_timer_create([](lv_timer_t *) {
+            wxradar::Frames &F = wxradar::frames();
+            if (!F.ready || F.count <= 0) return;
+            int next = F.play + 1;                       // advance, skipping unloaded slots
+            for (int i = 0; i < wxradar::FRAMES; ++i, ++next) {
+                if (next >= wxradar::FRAMES) next = 0;
+                if (F.px[next]) break;
+            }
+            F.play = next;
+            ui_weather_frame_refresh();
+        }, 320, nullptr);   // ~3 fps
     } else {
         s_tileStats = lv_tileview_add_tile(s_tv, 2, 0, LV_DIR_LEFT);   // rightmost; no Weather tile
     }
