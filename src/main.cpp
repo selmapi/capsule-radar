@@ -197,6 +197,7 @@ static void loadSettings() {
     g_settings.homeLat = p.getDouble("homeLat", HOME_LAT_DEFAULT);
     g_settings.homeLon = p.getDouble("homeLon", HOME_LON_DEFAULT);
     g_settings.rangeKm = p.getFloat("rangeKm", RANGE_KM_DEFAULT);
+    g_wxEnabled        = p.getBool("wx", false);   // read early: ui_create() needs it to add the Weather tile
     g_brightnessDay    = p.getInt("bright", BRIGHTNESS_DEFAULT);
     g_volume           = p.getInt("vol", 60);
     g_muted            = p.getBool("mute", false);
@@ -971,6 +972,7 @@ void setup() {
 
     loadSettings();
     route_cache_begin();   // clear stale route cache if the label format changed
+    ui_set_weather_enabled(g_wxEnabled);   // BEFORE display::begin()/ui_create(): gates the Weather tile
 
     // --- Display + LVGL (M0) ----------------------------------------------
     // CO5300 AMOLED over QSPI + LVGL draw buffers in PSRAM, then a hello screen.

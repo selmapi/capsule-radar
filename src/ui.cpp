@@ -35,6 +35,8 @@ static lv_obj_t *s_statsNet = nullptr;
 static lv_obj_t *s_hudGps   = nullptr;   // HUD satellite icon (hidden unless GPS auto-location is on)
 static lv_obj_t *s_statsGps = nullptr;   // Stats view GPS status line
 static lv_obj_t *s_hudWx    = nullptr;   // global raincloud icon (lv_layer_top)
+static bool      s_wxEnabled = false;    // Weather tile present? (set from NVS before ui_create)
+void ui_set_weather_enabled(bool en) { s_wxEnabled = en; }
 
 // Forward declaration so ui_set_weather (defined near ui_set_gps) compiles
 // regardless of where ui_weather_tile_refresh (defined near the Weather tile
@@ -507,7 +509,8 @@ static void build_card(void) {
 }
 
 void ui_show_view(int idx) {
-    if (s_tv && idx >= 0 && idx <= 3) lv_obj_set_tile_id(s_tv, (uint32_t)idx, 0, LV_ANIM_OFF);
+    const int maxv = s_wxEnabled ? 3 : 2;
+    if (s_tv && idx >= 0 && idx <= maxv) lv_obj_set_tile_id(s_tv, (uint32_t)idx, 0, LV_ANIM_OFF);
 }
 
 // ------------------------------------------------------------------- splash
@@ -587,35 +590,42 @@ void ui_create(void) {
 
     s_tileRadar = lv_tileview_add_tile(s_tv, 0, 0, LV_DIR_RIGHT);
     s_tileList  = lv_tileview_add_tile(s_tv, 1, 0, LV_DIR_HOR);
-    s_tileStats = lv_tileview_add_tile(s_tv, 2, 0, LV_DIR_HOR);   // was LV_DIR_LEFT — allow swipe to Weather
-    s_tileWx    = lv_tileview_add_tile(s_tv, 3, 0, LV_DIR_LEFT);
-    // Weather tile widgets (Phase A: text; Phase B adds the precip loop canvas)
-    s_wxTitle = lv_label_create(s_tileWx);
-    lv_obj_set_style_text_color(s_wxTitle, lv_color_hex(0x9affc8), 0);
-    lv_obj_set_style_text_font(s_wxTitle, &lv_font_montserrat_16, 0);
-    lv_label_set_text(s_wxTitle, "WEATHER");
-    lv_obj_align(s_wxTitle, LV_ALIGN_TOP_MID, 0, 60);
+    // Weather is a 4th tile added ONLY when enabled (off by default → existing users
+    // keep exactly 3 tiles). Toggling weather requires a reboot to add/remove the tile;
+    // the HUD icon + alerts still update live. s_wxEnabled is set (from NVS) before ui_create.
+    if (s_wxEnabled) {
+        s_tileStats = lv_tileview_add_tile(s_tv, 2, 0, LV_DIR_HOR);   // allow swipe right to Weather
+        s_tileWx    = lv_tileview_add_tile(s_tv, 3, 0, LV_DIR_LEFT);
+        // Weather tile widgets (Phase A: text; Phase B adds the precip loop canvas)
+        s_wxTitle = lv_label_create(s_tileWx);
+        lv_obj_set_style_text_color(s_wxTitle, lv_color_hex(0x9affc8), 0);
+        lv_obj_set_style_text_font(s_wxTitle, &lv_font_montserrat_16, 0);
+        lv_label_set_text(s_wxTitle, "WEATHER");
+        lv_obj_align(s_wxTitle, LV_ALIGN_TOP_MID, 0, 60);
 
-    s_wxTemp = lv_label_create(s_tileWx);
-    lv_obj_set_style_text_font(s_wxTemp, &lv_font_montserrat_28, 0);
-    lv_obj_set_style_text_color(s_wxTemp, lv_color_hex(0xeafff3), 0);
-    lv_label_set_text(s_wxTemp, "--\xC2\xB0");
-    lv_obj_align(s_wxTemp, LV_ALIGN_CENTER, 0, -30);
+        s_wxTemp = lv_label_create(s_tileWx);
+        lv_obj_set_style_text_font(s_wxTemp, &lv_font_montserrat_28, 0);
+        lv_obj_set_style_text_color(s_wxTemp, lv_color_hex(0xeafff3), 0);
+        lv_label_set_text(s_wxTemp, "--\xC2\xB0");
+        lv_obj_align(s_wxTemp, LV_ALIGN_CENTER, 0, -30);
 
-    s_wxCond = lv_label_create(s_tileWx);
-    lv_obj_set_style_text_color(s_wxCond, lv_color_hex(0x9affc8), 0);
-    lv_obj_set_style_text_align(s_wxCond, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(s_wxCond, "No data yet");
-    lv_obj_align(s_wxCond, LV_ALIGN_CENTER, 0, 12);
+        s_wxCond = lv_label_create(s_tileWx);
+        lv_obj_set_style_text_color(s_wxCond, lv_color_hex(0x9affc8), 0);
+        lv_obj_set_style_text_align(s_wxCond, LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_text(s_wxCond, "No data yet");
+        lv_obj_align(s_wxCond, LV_ALIGN_CENTER, 0, 12);
 
-    s_wxPill = lv_label_create(s_tileWx);
-    lv_obj_set_style_bg_color(s_wxPill, lv_color_hex(0x2a0808), 0);
-    lv_obj_set_style_bg_opa(s_wxPill, LV_OPA_COVER, 0);
-    lv_obj_set_style_pad_all(s_wxPill, 8, 0);
-    lv_obj_set_style_radius(s_wxPill, 16, 0);
-    lv_obj_set_style_text_color(s_wxPill, lv_color_hex(0xff8a6a), 0);
-    lv_obj_align(s_wxPill, LV_ALIGN_CENTER, 0, 70);
-    lv_obj_add_flag(s_wxPill, LV_OBJ_FLAG_HIDDEN);
+        s_wxPill = lv_label_create(s_tileWx);
+        lv_obj_set_style_bg_color(s_wxPill, lv_color_hex(0x2a0808), 0);
+        lv_obj_set_style_bg_opa(s_wxPill, LV_OPA_COVER, 0);
+        lv_obj_set_style_pad_all(s_wxPill, 8, 0);
+        lv_obj_set_style_radius(s_wxPill, 16, 0);
+        lv_obj_set_style_text_color(s_wxPill, lv_color_hex(0xff8a6a), 0);
+        lv_obj_align(s_wxPill, LV_ALIGN_CENTER, 0, 70);
+        lv_obj_add_flag(s_wxPill, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        s_tileStats = lv_tileview_add_tile(s_tv, 2, 0, LV_DIR_LEFT);   // rightmost; no Weather tile
+    }
     // Rebuild the list/stats with the latest data the moment they slide into view
     // (between polls they'd otherwise show whatever was there when last visible).
     lv_obj_add_event_cb(s_tv, [](lv_event_t *) { refresh_active_tile(); }, LV_EVENT_VALUE_CHANGED, nullptr);

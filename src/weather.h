@@ -20,7 +20,7 @@ struct State {
     uint32_t updatedMs = 0;       // lv_tick of last successful update
 };
 
-const State& state();             // read the latest (copy is cheap; returns a ref to shared)
-void         set(const State& s); // replace (thread-safe on device)
+State state();                    // returns a snapshot taken under the lock (safe cross-core)
+void  set(const State& s);        // replace (thread-safe on device)
 
 }  // namespace weather

@@ -9,7 +9,18 @@ namespace weather {
 
 static State s_state;
 
-const State& state() { return s_state; }
+State state() {
+#if defined(ARDUINO)
+    if (!s_mtx) s_mtx = xSemaphoreCreateMutex();
+    State copy;
+    if (s_mtx) xSemaphoreTake(s_mtx, portMAX_DELAY);
+    copy = s_state;
+    if (s_mtx) xSemaphoreGive(s_mtx);
+    return copy;
+#else
+    return s_state;   // sim: single-threaded
+#endif
+}
 
 void set(const State& s) {
 #if defined(ARDUINO)
