@@ -13,6 +13,8 @@
 #include "photo_client.h"
 #include "weather.h"
 #include "weather_client.h"
+#include "wxradar.h"
+#include "wxradar_client.h"
 #include "radar_view.h"
 #include "theme_table.h"
 #include "ui.h"
@@ -185,6 +187,13 @@ static void adsb_task(void*) {
             if (g_wxEnabled && (lastWx == 0 || millis() - lastWx >= 300000)) {   // every 5 min
                 lastWx = millis();
                 weather_client_poll(g_settings.homeLat, g_settings.homeLon);
+            }
+            // wxradar_step() is a self-throttling state machine (frame list refreshes at
+            // most every ~5 min; at most one frame's tiles fetched per call) — call it every
+            // cycle, do NOT gate it behind the 5-min timer above, or it stops being
+            // one-frame-per-cycle and goes back to blocking this task for a full refresh.
+            if (g_wxEnabled) {
+                wxradar_step(g_settings.homeLat, g_settings.homeLon);
             }
         }
         vTaskDelay(pdMS_TO_TICKS(250));
@@ -778,17 +787,20 @@ static void handleSweep() {   // show/hide the rotating sweep line (live)
 // curl http://capsuleradar.local/wx
 static void handleWx() {
     const weather::State w = weather::state();
-    char b[420];
+    const wxradar::Frames &rf = wxradar::frames();
+    char b[560];
     snprintf(b, sizeof(b),
         "enabled=%d\nstatus=%s\nvalid=%d\ntempC=%.1f\ncode=%d\nwindKmh=%.1f\nhum=%d\n"
         "alert=%d\netaMin=%d\nsummary=%s\nupdatedMs=%u\nnowMs=%u\n"
-        "homeLat=%.5f\nhomeLon=%.5f\nheapFree=%u\nlargestInternal=%u\n",
+        "homeLat=%.5f\nhomeLon=%.5f\nheapFree=%u\nlargestInternal=%u\n"
+        "radarStatus=%s\nradarFrames=%d\nradarReady=%d\nradarPlay=%d\n",
         (int)g_wxEnabled, weather_client_last_status(), (int)w.valid, w.tempC, w.code,
         w.windKmh, w.humidity, (int)w.alert, w.etaMin, w.summary,
         (unsigned)w.updatedMs, (unsigned)lv_tick_get(),
         g_settings.homeLat, g_settings.homeLon,
         (unsigned)ESP.getFreeHeap(),
-        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+        wxradar_last_status(), rf.count, (int)rf.ready, rf.play);
     g_web.send(200, "text/plain", b);
 }
 
